@@ -11,7 +11,8 @@ from utilities import create_folder, get_filename
 from models import *
 from pytorch_utils import move_data_to_device
 import config
-
+import time
+import torchaudio
 
 def audio_tagging(args):
     """Inference audio tagging result of an audio clip.
@@ -34,12 +35,40 @@ def audio_tagging(args):
 
     # Model
     Model = eval(model_type)
-    model = Model(sample_rate=sample_rate, window_size=window_size, 
-        hop_size=hop_size, mel_bins=mel_bins, fmin=fmin, fmax=fmax, 
-        classes_num=classes_num)
-    
-    checkpoint = torch.load(checkpoint_path, map_location=device)
-    model.load_state_dict(checkpoint['model'])
+    if model_type != 'Cnn14_16k_Mod':
+        model = Model(sample_rate=sample_rate, window_size=window_size,
+            hop_size=hop_size, mel_bins=mel_bins, fmin=fmin, fmax=fmax,
+            classes_num=classes_num)
+
+        checkpoint = torch.load(checkpoint_path, map_location=device)
+        model.load_state_dict(checkpoint['model'])
+    else:
+        if "Mod" in checkpoint_path:
+            model = Model(mel_bins=mel_bins, classes_num=classes_num)
+            checkpoint = torch.load(checkpoint_path, map_location=device)
+            model.load_state_dict(checkpoint['model'])
+        else:
+            # 1. 加载预训练模型权重
+            pretrained = torch.load(checkpoint_path, map_location=device)
+            pretrained_state = pretrained["model"] if "model" in pretrained else pretrained
+
+            # 2. 初始化新模型
+            model = Model(mel_bins=mel_bins, classes_num=classes_num)
+            model_state = model.state_dict()
+
+            # 3. 过滤掉前端特征提取层，只保留 bn0 及之后的
+            filtered_state = {
+                k: v for k, v in pretrained_state.items()
+                if k.startswith("bn0") or k.startswith("conv_block") or k.startswith("fc")
+            }
+
+            # 4. 更新 state_dict
+            model_state.update(filtered_state)
+
+            # 5. 加载
+            model.load_state_dict(model_state)
+
+            print("✅ 成功加载 bn0 及后续层参数！")
 
     # Parallel
     if 'cuda' in str(device):
@@ -52,13 +81,16 @@ def audio_tagging(args):
     # Load audio
     (waveform, _) = librosa.core.load(audio_path, sr=sample_rate, mono=True)
 
-    waveform = waveform[None, :]    # (1, audio_length)
+    waveform = waveform[None, 0:48000]    # (1, audio_length)
     waveform = move_data_to_device(waveform, device)
 
     # Forward
     with torch.no_grad():
         model.eval()
+        print('Inference start...')
+        start_time = time.time()
         batch_output_dict = model(waveform, None)
+        print('Inference time: {:.3f} seconds'.format(time.time() - start_time))
 
     clipwise_output = batch_output_dict['clipwise_output'].data.cpu().numpy()[0]
     """(classes_num,)"""
@@ -124,10 +156,12 @@ def sound_event_detection(args):
     waveform = waveform[None, :]    # (1, audio_length)
     waveform = move_data_to_device(waveform, device)
 
+    start_time = time.time()
     # Forward
     with torch.no_grad():
         model.eval()
         batch_output_dict = model(waveform, None)
+    print('Inference time: {:.3f} seconds'.format(time.time() - start_time))
 
     framewise_output = batch_output_dict['framewise_output'].data.cpu().numpy()[0]
     """(time_steps, classes_num)"""
@@ -172,12 +206,12 @@ if __name__ == '__main__':
     subparsers = parser.add_subparsers(dest='mode')
 
     parser_at = subparsers.add_parser('audio_tagging')
-    parser_at.add_argument('--sample_rate', type=int, default=32000)
-    parser_at.add_argument('--window_size', type=int, default=1024)
-    parser_at.add_argument('--hop_size', type=int, default=320)
+    parser_at.add_argument('--sample_rate', type=int, default=16000)
+    parser_at.add_argument('--window_size', type=int, default=512)
+    parser_at.add_argument('--hop_size', type=int, default=160)
     parser_at.add_argument('--mel_bins', type=int, default=64)
     parser_at.add_argument('--fmin', type=int, default=50)
-    parser_at.add_argument('--fmax', type=int, default=14000) 
+    parser_at.add_argument('--fmax', type=int, default=8000)
     parser_at.add_argument('--model_type', type=str, required=True)
     parser_at.add_argument('--checkpoint_path', type=str, required=True)
     parser_at.add_argument('--audio_path', type=str, required=True)
