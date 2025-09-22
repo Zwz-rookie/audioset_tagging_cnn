@@ -5,7 +5,8 @@ from torchlibrosa.stft import Spectrogram, LogmelFilterBank
 from torchlibrosa.augmentation import SpecAugmentation
 
 from pytorch_utils import do_mixup, interpolate, pad_framewise_output
- 
+import gk_kaldi
+import time
 
 def init_layer(layer):
     """Initialize a Linear or Convolutional layer. """
@@ -1390,10 +1391,12 @@ class MobileNetV1(nn.Module):
         """
         Input: (batch_size, data_length)"""
 
-        x = self.spectrogram_extractor(input)   # (batch_size, 1, time_steps, freq_bins)
-        x = self.logmel_extractor(x)    # (batch_size, 1, time_steps, mel_bins)
-        
-        x = x.transpose(1, 3)
+        # x = self.spectrogram_extractor(input)   # (batch_size, 1, time_steps, freq_bins)
+        # x = self.logmel_extractor(x)    # (batch_size, 1, time_steps, mel_bins)
+        #
+        # x = x.transpose(1, 3)
+
+        x = input.unsqueeze(3)
         x = self.bn0(x)
         x = x.transpose(1, 3)
         
@@ -2594,11 +2597,14 @@ class Cnn14_16k(nn.Module):
     def forward(self, input, mixup_lambda=None):
         """
         Input: (batch_size, data_length)"""
-
+        start_time = time.time()
         x = self.spectrogram_extractor(input)   # (batch_size, 1, time_steps, freq_bins)
         x = self.logmel_extractor(x)    # (batch_size, 1, time_steps, mel_bins)
+        end_time = time.time()
+        print('Spectrogram and logmel time: {}'.format(end_time - start_time))
 
         x = x.transpose(1, 3)
+        # x = input.unsqueeze(3)
         x = self.bn0(x)
         x = x.transpose(1, 3)
         
@@ -2631,6 +2637,140 @@ class Cnn14_16k(nn.Module):
         embedding = F.dropout(x, p=0.5, training=self.training)
         clipwise_output = torch.sigmoid(self.fc_audioset(x))
         
+        output_dict = {'clipwise_output': clipwise_output, 'embedding': embedding}
+
+        return output_dict
+
+
+# ------------------ CNN + LSTM 特征提取器 ------------------
+class CNNLSTMExtractor(nn.Module):
+    def __init__(self, hidden_size=256, out_channels=64):
+        super().__init__()
+        # 这里用 stride=4, stride=4, stride=10 → 总共 1/160
+        self.conv1 = nn.Conv1d(1, 64, kernel_size=5, stride=4, padding=2)
+        self.bn1 = nn.BatchNorm1d(64)
+
+        self.conv2 = nn.Conv1d(64, 128, kernel_size=5, stride=4, padding=2)
+        self.bn2 = nn.BatchNorm1d(128)
+
+        self.conv3 = nn.Conv1d(128, 128, kernel_size=5, stride=10, padding=2)
+        self.bn3 = nn.BatchNorm1d(128)
+
+        self.lstm = nn.LSTM(
+            input_size=128,
+            hidden_size=hidden_size,
+            num_layers=2,
+            batch_first=True,
+            bidirectional=True
+        )
+
+        self.proj = nn.Conv1d(hidden_size * 2, out_channels, kernel_size=1)
+        self.output_dim = out_channels
+
+    def forward(self, x):
+        fbank = self.preprocess(x)
+        fbank = fbank.transpose(1, 3)
+        return fbank
+        # x = x.unsqueeze(1)  # (B, 1, T)
+        # x = F.relu(self.bn1(self.conv1(x)))   # (B, 64, T/4)
+        # x = F.relu(self.bn2(self.conv2(x)))   # (B, 128, T/16)
+        # x = F.relu(self.bn3(self.conv3(x)))   # (B, 128, T/160)
+        #
+        # x = x.transpose(1, 2)                 # (B, T/160, 128)
+        # out, _ = self.lstm(x)                 # (B, T/160, 512)
+        # out = out.transpose(1, 2)             # (B, 512, T/160)
+        #
+        # out = self.proj(out)                  # (B, 64, T/160)
+        # return out.unsqueeze(3)               # (B, 64, T/160, 1)
+
+    def preprocess(
+            self,
+            source: torch.Tensor,
+            fbank_mean: float = 15.41663,
+            fbank_std: float = 6.55582,
+    ) -> torch.Tensor:
+        waveforms = source.unsqueeze(1) * (2 ** 15)  # 向量化处理所有波形
+        # 批量处理所有音频
+        fbanks = []
+        for i in range(waveforms.size(0)):
+            fbank = gk_kaldi.fbank(
+                waveforms[i],
+                num_mel_bins=64,
+                sample_frequency=16000,
+                frame_length=25,
+                frame_shift=10
+            )  # kaldi.fbank里面有个fft_rfft，是onnx不支持的算子，需要处理
+            fbanks.append(fbank)
+        fbank = torch.stack(fbanks, dim=0)  # shape: (1, T, 128)
+        fbank = (fbank - fbank_mean) / (2 * fbank_std)
+        fbank = fbank.unsqueeze(1)
+        return fbank
+
+# ------------------ 主网络 Cnn14_16k_Mod ------------------
+class Cnn14_16k_Mod(nn.Module):
+    def __init__(self, mel_bins, classes_num):
+        super().__init__()
+
+        # 替代 logmel 的 CNN+LSTM 特征提取器
+        self.feature_extractor = CNNLSTMExtractor(hidden_size=256, out_channels=mel_bins)
+
+        # 输出是 (B, 512, 1, T/4)，所以这里 BN 输入通道要改成 512
+        self.bn0 = nn.BatchNorm2d(self.feature_extractor.output_dim)
+
+        # 后续卷积块
+        self.conv_block1 = ConvBlock(in_channels=1, out_channels=64)
+        self.conv_block2 = ConvBlock(in_channels=64, out_channels=128)
+        self.conv_block3 = ConvBlock(in_channels=128, out_channels=256)
+        self.conv_block4 = ConvBlock(in_channels=256, out_channels=512)
+        self.conv_block5 = ConvBlock(in_channels=512, out_channels=1024)
+        self.conv_block6 = ConvBlock(in_channels=1024, out_channels=2048)
+
+        self.fc1 = nn.Linear(2048, 2048, bias=True)
+        self.fc_audioset = nn.Linear(2048, classes_num, bias=True)
+
+        self.init_weight()
+
+    def init_weight(self):
+        init_bn(self.bn0)
+        init_layer(self.fc1)
+        init_layer(self.fc_audioset)
+
+    def forward(self, input, mixup_lambda=None):
+        """
+        Input: (batch_size, data_length)
+        """
+        start_time = time.time()
+        x = self.feature_extractor(input)  # (B, 512, 1, T//4)
+        end_time = time.time()
+        print('CNN+LSTM feature extraction time: {}'.format(end_time - start_time))
+
+        # 对时序特征 BN
+        x = self.bn0(x)
+        x = x.transpose(1, 3)
+
+        # 后续卷积网络
+        x = self.conv_block1(x, pool_size=(2, 2), pool_type='avg')
+        x = F.dropout(x, p=0.2, training=self.training)
+        x = self.conv_block2(x, pool_size=(2, 2), pool_type='avg')
+        x = F.dropout(x, p=0.2, training=self.training)
+        x = self.conv_block3(x, pool_size=(2, 2), pool_type='avg')
+        x = F.dropout(x, p=0.2, training=self.training)
+        x = self.conv_block4(x, pool_size=(2, 2), pool_type='avg')
+        x = F.dropout(x, p=0.2, training=self.training)
+        x = self.conv_block5(x, pool_size=(2, 2), pool_type='avg')
+        x = F.dropout(x, p=0.2, training=self.training)
+        x = self.conv_block6(x, pool_size=(1, 1), pool_type='avg')
+        x = F.dropout(x, p=0.2, training=self.training)
+        x = torch.mean(x, dim=3)
+
+        (x1, _) = torch.max(x, dim=2)
+        x2 = torch.mean(x, dim=2)
+        x = x1 + x2
+        x = F.dropout(x, p=0.5, training=self.training)
+        x = F.relu_(self.fc1(x))
+        embedding = F.dropout(x, p=0.5, training=self.training)
+        clipwise_output = torch.sigmoid(self.fc_audioset(x))
+
         output_dict = {'clipwise_output': clipwise_output, 'embedding': embedding}
 
         return output_dict
