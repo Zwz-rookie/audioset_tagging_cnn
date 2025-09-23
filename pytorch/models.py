@@ -2714,6 +2714,10 @@ class Cnn14_16k_Mod(nn.Module):
         # 替代 logmel 的 CNN+LSTM 特征提取器
         self.feature_extractor = CNNLSTMExtractor(hidden_size=256, out_channels=mel_bins)
 
+        # Spec augmenter
+        self.spec_augmenter = SpecAugmentation(time_drop_width=64, time_stripes_num=2,
+                                               freq_drop_width=8, freq_stripes_num=2)
+
         # 输出是 (B, 512, 1, T/4)，所以这里 BN 输入通道要改成 512
         self.bn0 = nn.BatchNorm2d(self.feature_extractor.output_dim)
 
@@ -2747,6 +2751,13 @@ class Cnn14_16k_Mod(nn.Module):
         # 对时序特征 BN
         x = self.bn0(x)
         x = x.transpose(1, 3)
+
+        if self.training:
+            x = self.spec_augmenter(x)
+
+        # Mixup on spectrogram
+        if self.training and mixup_lambda is not None:
+            x = do_mixup(x, mixup_lambda)
 
         # 后续卷积网络
         x = self.conv_block1(x, pool_size=(2, 2), pool_type='avg')
