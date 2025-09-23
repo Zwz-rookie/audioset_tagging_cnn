@@ -18,7 +18,7 @@ from models import (Cnn14, Cnn14_no_specaug, Cnn14_no_dropout,
     Cnn6, Cnn10, ResNet22, ResNet38, ResNet54, Cnn14_emb512, Cnn14_emb128, 
     Cnn14_emb32, MobileNetV1, MobileNetV2, LeeNet11, LeeNet24, DaiNet19, 
     Res1dNet31, Res1dNet51, Wavegram_Cnn14, Wavegram_Logmel_Cnn14, 
-    Wavegram_Logmel128_Cnn14, Cnn14_16k, Cnn14_8k, Cnn14_mel32, Cnn14_mel128, 
+    Wavegram_Logmel128_Cnn14, Cnn14_16k, Cnn14_16k_Mod, Cnn14_8k, Cnn14_mel32, Cnn14_mel128,
     Cnn14_mixup_time_domain, Cnn14_DecisionLevelMax, Cnn14_DecisionLevelAtt)
 from pytorch_utils import (move_data_to_device, count_parameters, count_flops, 
     do_mixup)
@@ -28,6 +28,7 @@ from evaluate import Evaluator
 import config
 from losses import get_loss_func
 
+checkpoint_path = "Cnn14_16k_mAP=0.438.pth"
 
 def train(args):
     """Train AudioSet tagging model. 
@@ -50,7 +51,7 @@ def train(args):
       accumulation_steps: int
       cuda: bool
     """
-
+    global checkpoint_path
     # Arugments & parameters
     workspace = args.workspace
     data_type = args.data_type
@@ -89,16 +90,14 @@ def train(args):
         'eval.h5')
 
     checkpoints_dir = os.path.join(workspace, 'checkpoints', filename, 
-        'sample_rate={},window_size={},hop_size={},mel_bins={},fmin={},fmax={}'.format(
-        sample_rate, window_size, hop_size, mel_bins, fmin, fmax), 
+        'sample_rate={},mel_bins={}'.format(sample_rate, mel_bins),
         'data_type={}'.format(data_type), model_type, 
         'loss_type={}'.format(loss_type), 'balanced={}'.format(balanced), 
         'augmentation={}'.format(augmentation), 'batch_size={}'.format(batch_size))
     create_folder(checkpoints_dir)
     
     statistics_path = os.path.join(workspace, 'statistics', filename, 
-        'sample_rate={},window_size={},hop_size={},mel_bins={},fmin={},fmax={}'.format(
-        sample_rate, window_size, hop_size, mel_bins, fmin, fmax), 
+        'sample_rate={},mel_bins={}'.format(sample_rate, mel_bins),
         'data_type={}'.format(data_type), model_type, 
         'loss_type={}'.format(loss_type), 'balanced={}'.format(balanced), 
         'augmentation={}'.format(augmentation), 'batch_size={}'.format(batch_size), 
@@ -106,8 +105,7 @@ def train(args):
     create_folder(os.path.dirname(statistics_path))
 
     logs_dir = os.path.join(workspace, 'logs', filename, 
-        'sample_rate={},window_size={},hop_size={},mel_bins={},fmin={},fmax={}'.format(
-        sample_rate, window_size, hop_size, mel_bins, fmin, fmax), 
+        'sample_rate={},mel_bins={}'.format(sample_rate, mel_bins),
         'data_type={}'.format(data_type), model_type, 
         'loss_type={}'.format(loss_type), 'balanced={}'.format(balanced), 
         'augmentation={}'.format(augmentation), 'batch_size={}'.format(batch_size))
@@ -124,10 +122,41 @@ def train(args):
     
     # Model
     Model = eval(model_type)
-    model = Model(sample_rate=sample_rate, window_size=window_size, 
-        hop_size=hop_size, mel_bins=mel_bins, fmin=fmin, fmax=fmax, 
-        classes_num=classes_num)
-     
+    if model_type != 'Cnn14_16k_Mod':
+        model = Model(sample_rate=sample_rate, window_size=window_size,
+            hop_size=hop_size, mel_bins=mel_bins, fmin=fmin, fmax=fmax,
+            classes_num=classes_num)
+
+        checkpoint = torch.load(checkpoint_path, map_location=device)
+        model.load_state_dict(checkpoint['model'])
+    else:
+        if "Mod" in checkpoint_path:
+            model = Model(mel_bins=mel_bins, classes_num=classes_num)
+            checkpoint = torch.load(checkpoint_path, map_location=device)
+            model.load_state_dict(checkpoint['model'])
+        else:
+            # 1. 加载预训练模型权重
+            pretrained = torch.load(checkpoint_path, map_location=device)
+            pretrained_state = pretrained["model"] if "model" in pretrained else pretrained
+
+            # 2. 初始化新模型
+            model = Model(mel_bins=mel_bins, classes_num=classes_num)
+            model_state = model.state_dict()
+
+            # 3. 过滤掉前端特征提取层，只保留 bn0 及之后的
+            filtered_state = {
+                k: v for k, v in pretrained_state.items()
+                if k.startswith("bn0") or k.startswith("conv_block") or k.startswith("fc1")
+            }
+
+            # 4. 更新 state_dict
+            model_state.update(filtered_state)
+
+            # 5. 加载
+            model.load_state_dict(model_state)
+
+            print("✅ 成功加载 bn0 及后续层参数！")
+
     params_num = count_parameters(model)
     # flops_num = count_flops(model, clip_samples)
     logging.info('Parameters num: {}'.format(params_num))
@@ -162,12 +191,12 @@ def train(args):
         batch_sampler=train_sampler, collate_fn=collate_fn, 
         num_workers=num_workers, pin_memory=True)
     
-    eval_bal_loader = torch.utils.data.DataLoader(dataset=dataset, 
-        batch_sampler=eval_bal_sampler, collate_fn=collate_fn, 
+    eval_bal_loader = torch.utils.data.DataLoader(dataset=dataset,
+        batch_sampler=eval_bal_sampler, collate_fn=collate_fn,
         num_workers=num_workers, pin_memory=True)
 
-    eval_test_loader = torch.utils.data.DataLoader(dataset=dataset, 
-        batch_sampler=eval_test_sampler, collate_fn=collate_fn, 
+    eval_test_loader = torch.utils.data.DataLoader(dataset=dataset,
+        batch_sampler=eval_test_sampler, collate_fn=collate_fn,
         num_workers=num_workers, pin_memory=True)
 
     if 'mixup' in augmentation:
@@ -228,7 +257,7 @@ def train(args):
 
             bal_statistics = evaluator.evaluate(eval_bal_loader)
             test_statistics = evaluator.evaluate(eval_test_loader)
-                            
+
             logging.info('Validate bal mAP: {:.3f}'.format(
                 np.mean(bal_statistics['average_precision'])))
 
@@ -320,7 +349,7 @@ if __name__ == '__main__':
     parser_train = subparsers.add_parser('train') 
     parser_train.add_argument('--workspace', type=str, required=True)
     parser_train.add_argument('--data_type', type=str, default='full_train', choices=['balanced_train', 'full_train'])
-    parser_train.add_argument('--sample_rate', type=int, default=32000)
+    parser_train.add_argument('--sample_rate', type=int, default=16000)
     parser_train.add_argument('--window_size', type=int, default=1024)
     parser_train.add_argument('--hop_size', type=int, default=320)
     parser_train.add_argument('--mel_bins', type=int, default=64)

@@ -2743,10 +2743,10 @@ class Cnn14_16k_Mod(nn.Module):
         """
         Input: (batch_size, data_length)
         """
-        start_time = time.time()
+        # start_time = time.time()
         x = self.feature_extractor(input)  # (B, 512, 1, T//4)
-        end_time = time.time()
-        print('CNN+LSTM feature extraction time: {}'.format(end_time - start_time))
+        # end_time = time.time()
+        # print('CNN+LSTM feature extraction time: {}'.format(end_time - start_time))
 
         # 对时序特征 BN
         x = self.bn0(x)
