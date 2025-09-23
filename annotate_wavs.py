@@ -3,7 +3,7 @@ import librosa
 import librosa.display
 import matplotlib.pyplot as plt
 import pandas as pd
-import csv
+import simpleaudio as sa
 
 DATASET_ROOT = "dataset_root"
 WAV_DIR = os.path.join(DATASET_ROOT, "audios")
@@ -13,15 +13,39 @@ os.makedirs(META_DIR, exist_ok=True)
 
 CSV_PATH = os.path.join(META_DIR, "gk_train_segments.csv")
 
-# 如果 CSV 不存在，创建文件
 if not os.path.exists(CSV_PATH):
     df = pd.DataFrame(columns=["audio_name", "start_time", "end_time", "label"])
     df.to_csv(CSV_PATH, index=False)
 
-# 全局变量存放点击的时间点
 clicks = []
 current_wav = None
 ax = None
+current_play = None   # 保存当前播放对象
+
+
+def play_audio(y, sr):
+    """播放音频"""
+    global current_play
+    if current_play:
+        current_play.stop()
+
+    # 重采样到44100Hz，这是最常见的采样率之一
+    target_sr = 44100
+    if sr != target_sr:
+        y = librosa.resample(y, orig_sr=sr, target_sr=target_sr)
+        sr = target_sr
+
+    audio_data = (y * 32767).astype("int16")  # 转为16位PCM
+    current_play = sa.play_buffer(audio_data, 1, 2, sr)
+
+
+def stop_audio():
+    """停止播放"""
+    global current_play
+    if current_play:
+        current_play.stop()
+        current_play = None
+
 
 def annotate_wav(wav_path):
     """绘制波形并交互式标注区间"""
@@ -30,7 +54,6 @@ def annotate_wav(wav_path):
     clicks = []
 
     y, sr = librosa.load(wav_path, sr=None, mono=True)
-    times = librosa.times_like(y, sr=sr)
 
     fig, ax = plt.subplots(figsize=(12, 4))
     librosa.display.waveshow(y, sr=sr, ax=ax)
@@ -38,7 +61,23 @@ def annotate_wav(wav_path):
     ax.set_ylabel("Amplitude")
     ax.set_title(os.path.basename(wav_path))
 
-    # 鼠标点击事件
+    # --- 功能 1：加载已保存标注 ---
+    if os.path.exists(CSV_PATH):
+        df = pd.read_csv(CSV_PATH)
+        rel_name = os.path.basename(os.path.dirname(wav_path)) + "/" + os.path.basename(wav_path)
+        rel_name = rel_name.replace('.wav', '')
+        prev_annots = df[df["audio_name"] == rel_name]
+        for _, row in prev_annots.iterrows():
+            start, end, label = row["start_time"], row["end_time"], row["label"]
+            ax.axvspan(start, end, color="green", alpha=0.3)
+            mid = (start + end) / 2
+            ax.text(mid, ax.get_ylim()[1] * 0.8, label,
+                    color="black", fontsize=10, ha="center", va="center",
+                    bbox=dict(facecolor="white", alpha=0.6, edgecolor="none"))
+        if len(prev_annots) > 0:
+            print(f"📂 已加载 {len(prev_annots)} 条历史标注")
+
+    # 鼠标点击
     def onclick(event):
         if event.inaxes != ax:
             return
@@ -73,26 +112,6 @@ def annotate_wav(wav_path):
     fig.canvas.mpl_connect("key_press_event", onkey)
     plt.show()
 
-def save_annotation_err(wav_path, start, end, label):
-    global ax
-    """保存标注到 CSV"""
-    df = pd.read_csv(CSV_PATH)
-    df = pd.concat([df, pd.DataFrame([{
-        "audio_name": wav_path,
-        "start_time": int(start),
-        "end_time": int(end),
-        "label": f"{label}"
-    }])], ignore_index=True)
-    df.to_csv(CSV_PATH, index=False)
-    print(f"✅ 已保存标注: {wav_path}, {int(start)}-{int(end)}s, {label}")
-    # 在波形上标注区间和文字
-    if ax is not None:
-        ax.axvspan(start, end, color="green", alpha=0.3)
-        mid = (start + end) / 2
-        ax.text(mid, ax.get_ylim()[1] * 0.8, label,
-                color="black", fontsize=10, ha="center", va="center",
-                bbox=dict(facecolor="white", alpha=0.6, edgecolor="none"))
-        plt.draw()
 
 def save_annotation(wav_path, start, end, label):
     """
@@ -174,7 +193,6 @@ def main():
                 wav_files.append(os.path.join(root, f))
 
     print(f"发现 {len(wav_files)} 个 wav 文件，逐个标注...")
-
     for wav_path in wav_files:
         annotate_wav(wav_path)
 
