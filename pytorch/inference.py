@@ -42,11 +42,13 @@ def audio_tagging(args):
 
         checkpoint = torch.load(checkpoint_path, map_location=device)
         model.load_state_dict(checkpoint['model'])
+        print("✅ 成功加载 Cnn14_16k 模型！")
     else:
         if "Mod" in checkpoint_path:
             model = Model(mel_bins=mel_bins, classes_num=classes_num)
             checkpoint = torch.load(checkpoint_path, map_location=device)
             model.load_state_dict(checkpoint['model'])
+            print("✅ 成功加载 Cnn14_16k_Mod 模型！")
         else:
             # 1. 加载预训练模型权重
             pretrained = torch.load(checkpoint_path, map_location=device)
@@ -81,7 +83,7 @@ def audio_tagging(args):
     # Load audio
     (waveform, _) = librosa.core.load(audio_path, sr=sample_rate, mono=True)
 
-    waveform = waveform[None, 0:48000]    # (1, audio_length)
+    waveform = waveform[None, 0:64000]    # (1, audio_length)
     waveform = move_data_to_device(waveform, device)
 
     # Forward
@@ -98,7 +100,7 @@ def audio_tagging(args):
     sorted_indexes = np.argsort(clipwise_output)[::-1]
 
     # Print audio tagging top probabilities
-    for k in range(10):
+    for k in range(3):
         print('{}: {:.3f}'.format(np.array(labels)[sorted_indexes[k]], 
             clipwise_output[sorted_indexes[k]]))
 

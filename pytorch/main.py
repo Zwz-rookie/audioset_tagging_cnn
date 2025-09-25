@@ -28,7 +28,7 @@ from evaluate import Evaluator
 import config
 from losses import get_loss_func
 
-checkpoint_path = "Cnn14_16k_mAP=0.438.pth"
+checkpoint_path = "Cnn14_16k_Mod_mAP=0.438.pth"
 
 def train(args):
     """Train AudioSet tagging model. 
@@ -129,11 +129,13 @@ def train(args):
 
         checkpoint = torch.load(checkpoint_path, map_location=device)
         model.load_state_dict(checkpoint['model'])
+        print("✅ 成功加载 Cnn14_16k 模型！")
     else:
         if "Mod" in checkpoint_path:
             model = Model(mel_bins=mel_bins, classes_num=classes_num)
             checkpoint = torch.load(checkpoint_path, map_location=device)
             model.load_state_dict(checkpoint['model'])
+            print("✅ 成功加载 Cnn14_16k_Mod 模型！")
         else:
             # 1. 加载预训练模型权重
             pretrained = torch.load(checkpoint_path, map_location=device)
@@ -180,30 +182,30 @@ def train(args):
         black_list_csv=black_list_csv)
     
     # Evaluate sampler
-    eval_bal_sampler = EvaluateSampler(
-        indexes_hdf5_path=eval_bal_indexes_hdf5_path, batch_size=batch_size)
-
-    eval_test_sampler = EvaluateSampler(
-        indexes_hdf5_path=eval_test_indexes_hdf5_path, batch_size=batch_size)
+    # eval_bal_sampler = EvaluateSampler(
+    #     indexes_hdf5_path=eval_bal_indexes_hdf5_path, batch_size=batch_size)
+    #
+    # eval_test_sampler = EvaluateSampler(
+    #     indexes_hdf5_path=eval_test_indexes_hdf5_path, batch_size=batch_size)
 
     # Data loader
     train_loader = torch.utils.data.DataLoader(dataset=dataset, 
         batch_sampler=train_sampler, collate_fn=collate_fn, 
         num_workers=num_workers, pin_memory=True)
     
-    eval_bal_loader = torch.utils.data.DataLoader(dataset=dataset,
-        batch_sampler=eval_bal_sampler, collate_fn=collate_fn,
-        num_workers=num_workers, pin_memory=True)
-
-    eval_test_loader = torch.utils.data.DataLoader(dataset=dataset,
-        batch_sampler=eval_test_sampler, collate_fn=collate_fn,
-        num_workers=num_workers, pin_memory=True)
+    # eval_bal_loader = torch.utils.data.DataLoader(dataset=dataset,
+    #     batch_sampler=eval_bal_sampler, collate_fn=collate_fn,
+    #     num_workers=num_workers, pin_memory=True)
+    #
+    # eval_test_loader = torch.utils.data.DataLoader(dataset=dataset,
+    #     batch_sampler=eval_test_sampler, collate_fn=collate_fn,
+    #     num_workers=num_workers, pin_memory=True)
 
     if 'mixup' in augmentation:
         mixup_augmenter = Mixup(mixup_alpha=1.)
 
     # Evaluator
-    evaluator = Evaluator(model=model)
+    # evaluator = Evaluator(model=model)
         
     # Statistics
     statistics_container = StatisticsContainer(statistics_path)
@@ -255,18 +257,18 @@ def train(args):
         if (iteration % 2000 == 0 and iteration > resume_iteration) or (iteration == 0):
             train_fin_time = time.time()
 
-            bal_statistics = evaluator.evaluate(eval_bal_loader)
-            test_statistics = evaluator.evaluate(eval_test_loader)
-
-            logging.info('Validate bal mAP: {:.3f}'.format(
-                np.mean(bal_statistics['average_precision'])))
-
-            logging.info('Validate test mAP: {:.3f}'.format(
-                np.mean(test_statistics['average_precision'])))
-
-            statistics_container.append(iteration, bal_statistics, data_type='bal')
-            statistics_container.append(iteration, test_statistics, data_type='test')
-            statistics_container.dump()
+            # bal_statistics = evaluator.evaluate(eval_bal_loader)
+            # test_statistics = evaluator.evaluate(eval_test_loader)
+            #
+            # logging.info('Validate bal mAP: {:.3f}'.format(
+            #     np.mean(bal_statistics['average_precision'])))
+            #
+            # logging.info('Validate test mAP: {:.3f}'.format(
+            #     np.mean(test_statistics['average_precision'])))
+            #
+            # statistics_container.append(iteration, bal_statistics, data_type='bal')
+            # statistics_container.append(iteration, test_statistics, data_type='test')
+            # statistics_container.dump()
 
             train_time = train_fin_time - train_bgn_time
             validate_time = time.time() - train_fin_time
@@ -280,7 +282,7 @@ def train(args):
             train_bgn_time = time.time()
         
         # Save model
-        if iteration % 100000 == 0:
+        if iteration % 100 == 0:
             checkpoint = {
                 'iteration': iteration, 
                 'model': model.module.state_dict(), 

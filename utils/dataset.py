@@ -188,6 +188,109 @@ def pack_waveforms_to_hdf5(args):
 
     logging.info('Write to {}'.format(waveforms_hdf5_path))
     logging.info('Pack hdf5 time: {:.3f}'.format(time.time() - total_time))
+
+import pandas as pd
+def read_metadata_with_time(csv_path, classes_num, id_to_ix):
+    """读取带时间戳的强标注 CSV"""
+    df = pd.read_csv(csv_path)
+
+    audio_names = df['audio_name'].tolist()
+    start_times = df['start_time'].tolist()
+    end_times = df['end_time'].tolist()
+    labels = df['label'].tolist()
+
+    # 转 one-hot
+    targets = []
+    for label in labels:
+        target = np.zeros(classes_num, dtype=bool)
+        clean_label = label.strip().replace('"', '')
+        target[id_to_ix[clean_label]] = True
+        targets.append(target)
+
+    return {
+        'audio_name': audio_names,
+        'start_time': start_times,
+        'end_time': end_times,
+        'target': targets,
+    }
+
+
+def pack_waveforms_to_hdf5_strong(args):
+    """把带时间戳的强标注音频片段打包成 hdf5，用于 PANNs 训练"""
+
+    # Arguments & parameters
+    audios_dir = args.audios_dir
+    csv_path = args.csv_path
+    waveforms_hdf5_path = args.waveforms_hdf5_path
+    mini_data = args.mini_data
+
+    clip_samples = config.clip_samples
+    classes_num = config.classes_num
+    sample_rate = config.sample_rate
+    id_to_ix = config.id_to_ix
+
+    # Paths
+    if mini_data:
+        prefix = 'mini_'
+        waveforms_hdf5_path += '.mini'
+    else:
+        prefix = ''
+
+    create_folder(os.path.dirname(waveforms_hdf5_path))
+
+    logs_dir = '_logs/pack_waveforms_to_hdf5_strong/{}{}'.format(
+        prefix, get_filename(csv_path))
+    create_folder(logs_dir)
+    create_logging(logs_dir, filemode='w')
+    logging.info('Write logs to {}'.format(logs_dir))
+
+    # 读取带时间戳的标注
+    meta_dict = read_metadata_with_time(csv_path, classes_num, id_to_ix)
+
+    if mini_data:
+        mini_num = 10
+        for key in meta_dict.keys():
+            meta_dict[key] = meta_dict[key][0:mini_num]
+
+    audios_num = len(meta_dict['audio_name'])
+    logging.info("Total audio segments: {}".format(audios_num))
+
+    # 写入 hdf5
+    total_time = time.time()
+    with h5py.File(waveforms_hdf5_path, 'w') as hf:
+        hf.create_dataset('audio_name', shape=(audios_num,), dtype='S200')
+        hf.create_dataset('waveform', shape=(audios_num, clip_samples), dtype=np.float32)
+        hf.create_dataset('target', shape=(audios_num, classes_num), dtype=np.bool_)
+        hf.attrs.create('sample_rate', data=sample_rate, dtype=np.int32)
+
+        for n in range(audios_num):
+            audio_path = os.path.join(audios_dir, meta_dict['audio_name'][n] + ".wav")
+
+            if os.path.isfile(audio_path):
+                logging.info('{} {}'.format(n, audio_path))
+                (audio, _) = librosa.core.load(audio_path, sr=sample_rate, mono=True)
+
+                # 根据时间戳截取片段
+                start = int(float(meta_dict['start_time'][n]) * sample_rate)
+                end = int(float(meta_dict['end_time'][n]) * sample_rate)
+                seg = audio[start:end]
+
+                # pad 或截断到 clip_samples
+                seg = pad_or_truncate(seg, clip_samples)
+
+                # 写入 hdf5
+                hf['audio_name'][n] = "{}_{}_{}".format(
+                    meta_dict['audio_name'][n],
+                    meta_dict['start_time'][n],
+                    meta_dict['end_time'][n]
+                ).encode()
+                hf['waveform'][n] = float32_to_int16(seg) #seg.astype(np.float32)
+                hf['target'][n] = meta_dict['target'][n]
+            else:
+                logging.info('{} File does not exist! {}'.format(n, audio_path))
+
+    logging.info('Write hdf5 to {}'.format(waveforms_hdf5_path))
+    logging.info('Time: {:.3f} s'.format(time.time() - total_time))
           
 
 if __name__ == '__main__':
@@ -209,6 +312,12 @@ if __name__ == '__main__':
     parser_pack_wavs.add_argument('--waveforms_hdf5_path', type=str, required=True, help='Path to save out packed hdf5.')
     parser_pack_wavs.add_argument('--mini_data', action='store_true', default=False, help='Set true to only download 10 audios for debugging.')
 
+    parser_pack_wavs = subparsers.add_parser('pack_waveforms_to_hdf5_strong')
+    parser_pack_wavs.add_argument('--csv_path', type=str, required=True, help='Path of csv file containing audio info to be downloaded.')
+    parser_pack_wavs.add_argument('--audios_dir', type=str, required=True, help='Directory to save out downloaded audio.')
+    parser_pack_wavs.add_argument('--waveforms_hdf5_path', type=str, required=True, help='Path to save out packed hdf5.')
+    parser_pack_wavs.add_argument('--mini_data', action='store_true', default=False, help='Set true to only download 10 audios for debugging.')
+
     args = parser.parse_args()
     
     if args.mode == 'split_unbalanced_csv_to_partial_csvs':
@@ -219,6 +328,9 @@ if __name__ == '__main__':
 
     elif args.mode == 'pack_waveforms_to_hdf5':
         pack_waveforms_to_hdf5(args)
+
+    elif args.mode == 'pack_waveforms_to_hdf5_strong':
+        pack_waveforms_to_hdf5_strong(args)
 
     else:
         raise Exception('Incorrect arguments!')

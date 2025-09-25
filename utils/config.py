@@ -2,7 +2,7 @@ import numpy as np
 import csv
 
 sample_rate = 16000
-clip_samples = sample_rate * 10     # Audio clips are 10-second
+clip_samples = sample_rate * 5     # Audio clips are 10-second
 
 # Load label
 with open('dataset_root/metadata/class_labels_indices.csv', 'r') as f:
