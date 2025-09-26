@@ -35,14 +35,40 @@ def audio_tagging(args):
 
     # Model
     Model = eval(model_type)
-    if model_type != 'Cnn14_16k_Mod':
+    if not model_type.endswith("_Mod"):
         model = Model(sample_rate=sample_rate, window_size=window_size,
-            hop_size=hop_size, mel_bins=mel_bins, fmin=fmin, fmax=fmax,
-            classes_num=classes_num)
+                      hop_size=hop_size, mel_bins=mel_bins, fmin=fmin, fmax=fmax,
+                      classes_num=classes_num)
 
         checkpoint = torch.load(checkpoint_path, map_location=device)
         model.load_state_dict(checkpoint['model'])
         print("✅ 成功加载 Cnn14_16k 模型！")
+
+    elif model_type == 'MobileNetV2_Mod':
+        if "Mod" in checkpoint_path:
+            # model = torch.load("MobileNetV2_Mod_trace.pt", map_location=device)
+            model = Model(mel_bins=mel_bins, classes_num=classes_num)
+            checkpoint = torch.load(checkpoint_path, map_location=device)
+            model.load_state_dict(checkpoint['model'])
+            print("✅ 成功加载 MobileNetV2_Mod 模型！")
+        else:
+            # 2. 初始化新模型
+            model = Model(mel_bins=mel_bins, classes_num=classes_num)
+            model_state = model.state_dict()
+            # 1. 加载预训练模型权重
+            pretrained = torch.load(checkpoint_path, map_location=device)
+            pretrained_state = pretrained["model"] if "model" in pretrained else pretrained
+            # 3. 过滤掉前端特征提取层，只保留 bn0 及之后的
+            filtered_state = {
+                k: v for k, v in pretrained_state.items()
+                if not (k.startswith("feature_extractor") or k.startswith("fc_audioset")
+                        or k.startswith("spectrogram_extractor") or k.startswith("logmel_extractor"))
+            }
+            # 4. 更新 state_dict
+            model_state.update(filtered_state)
+            # 5. 加载
+            model.load_state_dict(model_state)
+            print("✅ 成功加载 MobileNetV2 bn0 及后续层参数！")
     else:
         if "Mod" in checkpoint_path:
             model = Model(mel_bins=mel_bins, classes_num=classes_num)
@@ -76,22 +102,25 @@ def audio_tagging(args):
     if 'cuda' in str(device):
         model.to(device)
         print('GPU number: {}'.format(torch.cuda.device_count()))
-        model = torch.nn.DataParallel(model)
+        # model = torch.nn.DataParallel(model)
     else:
         print('Using CPU.')
     
     # Load audio
     (waveform, _) = librosa.core.load(audio_path, sr=sample_rate, mono=True)
 
-    waveform = waveform[None, 0:64000]    # (1, audio_length)
+    waveform = waveform[None, 0:32000]    # (1, audio_length)
     waveform = move_data_to_device(waveform, device)
 
     # Forward
     with torch.no_grad():
         model.eval()
+        # example_input = waveform
+        # traced = torch.jit.trace(model, example_input, strict=False)
+        # traced.save("MobileNetV2_Mod_trace.pt")
         print('Inference start...')
         start_time = time.time()
-        batch_output_dict = model(waveform, None)
+        batch_output_dict = model(waveform)
         print('Inference time: {:.3f} seconds'.format(time.time() - start_time))
 
     clipwise_output = batch_output_dict['clipwise_output'].data.cpu().numpy()[0]
@@ -110,6 +139,33 @@ def audio_tagging(args):
         print('embedding: {}'.format(embedding.shape))
 
     return clipwise_output, labels
+
+def pcm_to_resampled_waveform(data, src_sample_rate=4000, target_sample_rate=16000):
+    """
+    将原始 PCM 数据（4kHz）直接转换为 16kHz waveform (numpy array)，避免存储到 wav 再读取。
+
+    参数:
+    - data: numpy array[int16] 或 bytes (PCM 波形数据)
+    - src_sample_rate: PCM 原始采样率 (默认 4000Hz)
+    - target_sample_rate: 目标采样率 (默认 16000Hz)
+
+    返回:
+    - waveform: numpy array[float32], shape=(n_samples,)
+    """
+
+    # 转换成 float32 [-1, 1]
+    waveform = data #.astype(np.float32) / 32768.0
+
+    # 重采样（4k → 16k）
+    if src_sample_rate != target_sample_rate:
+        waveform = librosa.resample(
+            waveform,
+            orig_sr=src_sample_rate,
+            target_sr=target_sample_rate,
+            res_type="kaiser_best"  # 更快，可以换 "kaiser_best" 提高质量
+        )
+
+    return waveform
 
 
 def sound_event_detection(args):

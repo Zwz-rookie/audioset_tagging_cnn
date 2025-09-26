@@ -16,7 +16,7 @@ from utilities import (create_folder, get_filename, create_logging, Mixup,
     StatisticsContainer)
 from models import (Cnn14, Cnn14_no_specaug, Cnn14_no_dropout, 
     Cnn6, Cnn10, ResNet22, ResNet38, ResNet54, Cnn14_emb512, Cnn14_emb128, 
-    Cnn14_emb32, MobileNetV1, MobileNetV2, LeeNet11, LeeNet24, DaiNet19, 
+    Cnn14_emb32, MobileNetV1, MobileNetV2, MobileNetV2_Mod, LeeNet11, LeeNet24, DaiNet19,
     Res1dNet31, Res1dNet51, Wavegram_Cnn14, Wavegram_Logmel_Cnn14, 
     Wavegram_Logmel128_Cnn14, Cnn14_16k, Cnn14_16k_Mod, Cnn14_8k, Cnn14_mel32, Cnn14_mel128,
     Cnn14_mixup_time_domain, Cnn14_DecisionLevelMax, Cnn14_DecisionLevelAtt)
@@ -28,7 +28,7 @@ from evaluate import Evaluator
 import config
 from losses import get_loss_func
 
-checkpoint_path = "Cnn14_16k_Mod_mAP=0.438.pth"
+checkpoint_path = "MobileNetV2_Mod_mAP=0.383.pth"
 
 def train(args):
     """Train AudioSet tagging model. 
@@ -122,7 +122,7 @@ def train(args):
     
     # Model
     Model = eval(model_type)
-    if model_type != 'Cnn14_16k_Mod':
+    if not model_type.endswith("_Mod"):
         model = Model(sample_rate=sample_rate, window_size=window_size,
             hop_size=hop_size, mel_bins=mel_bins, fmin=fmin, fmax=fmax,
             classes_num=classes_num)
@@ -130,6 +130,32 @@ def train(args):
         checkpoint = torch.load(checkpoint_path, map_location=device)
         model.load_state_dict(checkpoint['model'])
         print("✅ 成功加载 Cnn14_16k 模型！")
+
+    elif model_type == 'MobileNetV2_Mod':
+        if "Mod" in checkpoint_path:
+            model = Model(mel_bins=mel_bins, classes_num=classes_num)
+            checkpoint = torch.load(checkpoint_path, map_location=device)
+            model.load_state_dict(checkpoint['model'])
+            print("✅ 成功加载 MobileNetV2_Mod 模型！")
+        else:
+            # 2. 初始化新模型
+            model = Model(mel_bins=mel_bins, classes_num=classes_num)
+            model_state = model.state_dict()
+            # 1. 加载预训练模型权重
+            pretrained = torch.load(checkpoint_path, map_location=device)
+            pretrained_state = pretrained["model"] if "model" in pretrained else pretrained
+            # 3. 过滤掉前端特征提取层，只保留 bn0 及之后的
+            filtered_state = {
+                k: v for k, v in pretrained_state.items()
+                if not (k.startswith("feature_extractor") or k.startswith("fc_audioset")
+                        or k.startswith("spectrogram_extractor") or k.startswith("logmel_extractor"))
+            }
+            # 4. 更新 state_dict
+            model_state.update(filtered_state)
+            # 5. 加载
+            model.load_state_dict(model_state)
+            print("✅ 成功加载 MobileNetV2 bn0 及后续层参数！")
+
     else:
         if "Mod" in checkpoint_path:
             model = Model(mel_bins=mel_bins, classes_num=classes_num)
