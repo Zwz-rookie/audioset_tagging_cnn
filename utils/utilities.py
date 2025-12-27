@@ -92,9 +92,25 @@ def read_metadata(csv_path, classes_num, id_to_ix):
     return meta_dict
 
 
-def float32_to_int16(x):
+def float32_to_int16_origin(x):
     assert np.max(np.abs(x)) <= 1.2
     x = np.clip(x, -1, 1)
+    return (x * 32767.).astype(np.int16)
+
+def float32_to_int16(x):
+    if np.max(np.abs(x)) <= 1.2:
+        x = np.clip(x, -1, 1)
+    else:
+        max_val = np.max(np.abs(x))
+        if max_val > 0:  # 避免除零错误
+            scale = min(1.0 / max_val, 1.0)  # 动态计算缩放因子
+            x = x * scale
+            x = np.clip(x, -1, 1)
+            print("Warning: audio is clipped to [-1, 1] after scaling.")
+        else:
+            print("Warning: max_val is zero, cannot scale.")
+            # 报错中断
+            raise ValueError("max_val is zero, cannot scale.")
     return (x * 32767.).astype(np.int16)
 
 def int16_to_float32(x):

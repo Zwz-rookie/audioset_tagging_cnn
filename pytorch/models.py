@@ -7,6 +7,11 @@ from torchlibrosa.augmentation import SpecAugmentation
 from pytorch_utils import do_mixup, interpolate, pad_framewise_output
 import gk_kaldi
 import time
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+from PIL import Image
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 
 def init_layer(layer):
     """Initialize a Linear or Convolutional layer. """
@@ -2779,6 +2784,8 @@ class CNNLSTMExtractor(nn.Module):
     def forward(self, x):
         fbank = self.preprocess(x)
         fbank = fbank.transpose(1, 3)
+        # save_fbank_visualization(fbank)
+
         return fbank
         # x = x.unsqueeze(1)  # (B, 1, T)
         # x = F.relu(self.bn1(self.conv1(x)))   # (B, 64, T/4)
@@ -2814,6 +2821,57 @@ class CNNLSTMExtractor(nn.Module):
         fbank = (fbank - fbank_mean) / (2 * fbank_std)
         fbank = fbank.unsqueeze(1)
         return fbank
+
+
+def save_fbank_visualization(fbank, output_dir="fbank_visuals"):
+    """
+    将FBank特征保存为灰度图和伪彩色图
+
+    参数:
+        fbank: 预处理后的FBank张量，形状为(batch, channels, time, freq)
+        output_dir: 输出目录路径
+    """
+
+    # 创建输出目录
+    os.makedirs(output_dir, exist_ok=True)
+
+    # 转置维度: (batch, channels, time, freq) -> (batch, freq, time, channels)
+
+    batch_size = fbank.shape[0]
+
+    for i in range(batch_size):
+        # 获取单个样本的特征图
+        sample = fbank[i].squeeze(2).detach().cpu().numpy()  # 形状(freq_bins, time_frames)
+
+        # 1. 保存灰度图像
+        plt.figure(figsize=(12, 4))
+        plt.imshow(sample, aspect='auto', cmap='viridis', origin='lower')
+        plt.title(f"Grayscale FBank {i}")
+        plt.xlabel("Time Frame")
+        plt.ylabel("Mel Frequency Bin")
+        plt.colorbar(label="Amplitude")
+        plt.savefig(os.path.join(output_dir, f"grayscale_{i+2}.png"), bbox_inches='tight')
+        plt.close()
+
+        # 2. 保存伪彩色图像
+        img_array = (sample - sample.min()) / (sample.max() - sample.min()) * 255
+        img_array = img_array.astype(np.uint8)
+
+        # 创建PIL图像对象
+        img = Image.fromarray(img_array)
+        img = img.convert("L")  # 转换为灰度图
+        img.save(os.path.join(output_dir, f"pseudo_color_{i+2}.png"))
+
+        # 3. 保存带色彩映射的彩色图像
+        plt.figure(figsize=(12, 4))
+        plt.imshow(sample, aspect='auto', cmap='jet', origin='lower')
+        plt.title(f"Color-mapped FBank {i}")
+        plt.xlabel("Time Frame")
+        plt.ylabel("Mel Frequency Bin")
+        plt.colorbar(label="Normalized Amplitude")
+        plt.savefig(os.path.join(output_dir, f"color_mapped_{i+2}.png"), bbox_inches='tight')
+        plt.close()
+
 
 # ------------------ 主网络 Cnn14_16k_Mod ------------------
 class Cnn14_16k_Mod(nn.Module):

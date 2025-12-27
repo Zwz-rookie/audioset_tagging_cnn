@@ -2,16 +2,19 @@ import os
 import librosa
 import librosa.display
 import matplotlib.pyplot as plt
+from matplotlib.widgets import Button
+from matplotlib.animation import FuncAnimation
 import pandas as pd
 import simpleaudio as sa
+import sounddevice as sd
 
-DATASET_ROOT = "dataset_root"
+DATASET_ROOT = "dataset_root_GM"
 WAV_DIR = os.path.join(DATASET_ROOT, "audios")
 META_DIR = os.path.join(DATASET_ROOT, "metadata")
 os.makedirs(WAV_DIR, exist_ok=True)
 os.makedirs(META_DIR, exist_ok=True)
 
-CSV_PATH = os.path.join(META_DIR, "gk_train_segments.csv")
+CSV_PATH = os.path.join(META_DIR, "gk_train_segments_GM.csv")
 
 if not os.path.exists(CSV_PATH):
     df = pd.DataFrame(columns=["audio_name", "start_time", "end_time", "label"])
@@ -39,22 +42,33 @@ def play_audio(y, sr):
     current_play = sa.play_buffer(audio_data, 1, 2, sr)
 
 
-def stop_audio():
-    """停止播放"""
-    global current_play
-    if current_play:
-        current_play.stop()
-        current_play = None
+# def play_segment(start, end):
+#     """播放音频片段"""
+#     global y_global, sr_global
+#     start_idx = int(start * sr_global)
+#     end_idx = int(end * sr_global)
+#     sd.stop()
+#     sd.play(y_global[start_idx:end_idx], sr_global)
+#
+# def add_play_button(fig, start, end, ypos=1.05):
+#     """在波形图上方添加播放按钮"""
+#     ax_button = plt.axes([0.1, ypos, 0.1, 0.05])  # [left, bottom, width, height]
+#     btn = Button(ax_button, f"▶ {int(start)}-{int(end)}s")
+#     btn.on_clicked(lambda event: play_segment(start, end))
+#     return btn
 
 
 def annotate_wav(wav_path):
-    """绘制波形并交互式标注区间"""
-    global clicks, current_wav, ax
+    """绘制波形并交互式标注区间 + 播放器控件"""
+    global clicks, current_wav, ax, current_play
     current_wav = wav_path
     clicks = []
 
+    # --- 加载音频 ---
     y, sr = librosa.load(wav_path, sr=None, mono=True)
+    duration = len(y) / sr  # 音频时长
 
+    # --- 画波形 ---
     fig, ax = plt.subplots(figsize=(12, 4))
     librosa.display.waveshow(y, sr=sr, ax=ax)
     ax.set_xlabel("Time (s)")
@@ -64,7 +78,12 @@ def annotate_wav(wav_path):
     # --- 功能 1：加载已保存标注 ---
     if os.path.exists(CSV_PATH):
         df = pd.read_csv(CSV_PATH)
-        rel_name = os.path.basename(os.path.dirname(wav_path)) + "/" + os.path.basename(wav_path)
+        full_pth = os.path.dirname(wav_path)
+        # 如果"_GM"在路径中，则保留倒数两级目录+文件
+        if '_GM' in full_pth:
+            rel_name = os.path.basename(os.path.dirname(full_pth)) + "/" + os.path.basename(full_pth) + "/" + os.path.basename(wav_path)
+        else:
+            rel_name = os.path.basename(full_pth) + "/" + os.path.basename(wav_path)
         rel_name = rel_name.replace('.wav', '')
         prev_annots = df[df["audio_name"] == rel_name]
         for _, row in prev_annots.iterrows():
@@ -77,7 +96,7 @@ def annotate_wav(wav_path):
         if len(prev_annots) > 0:
             print(f"📂 已加载 {len(prev_annots)} 条历史标注")
 
-    # 鼠标点击
+    # --- 鼠标点击标注 ---
     def onclick(event):
         if event.inaxes != ax:
             return
@@ -88,7 +107,7 @@ def annotate_wav(wav_path):
             plt.draw()
             print(f"选择区间: {start:.0f} - {end:.0f} 秒，按键 d/n/m 或 Enter 输入标签")
 
-    # 键盘事件
+    # --- 键盘输入标签 ---
     def onkey(event):
         if len(clicks) == 2:
             start, end = sorted(clicks)
@@ -99,12 +118,20 @@ def annotate_wav(wav_path):
                 label = "/m/noise"
             elif event.key == "m":
                 label = "/m/missile"
+            elif event.key == "w":
+                label = "/m/quadrotor"
+            elif event.key == "1":
+                label = "/m/1Khz40db"
             elif event.key == "enter":
                 label = input(f"请输入标签 (区间 {start:.0f}-{end:.0f}s): ")
 
             if label:
                 # 将current_wav路径改为最后一层文件夹+文件名
-                current_wav_ = os.path.basename(os.path.dirname(current_wav)) + "/" + os.path.basename(current_wav)
+                full_pth = os.path.dirname(wav_path)
+                if '_GM' in full_pth:
+                    current_wav_ = os.path.basename(os.path.dirname(full_pth)) + "/" + os.path.basename(full_pth) + "/" + os.path.basename(wav_path)
+                else:
+                    current_wav_ = os.path.basename(full_pth) + "/" + os.path.basename(wav_path)
                 save_annotation(current_wav_, start, end, label)
                 clicks.clear()
 
@@ -194,6 +221,7 @@ def main():
 
     print(f"发现 {len(wav_files)} 个 wav 文件，逐个标注...")
     for wav_path in wav_files:
+        print(f"📂 正在标注 {wav_path}")
         annotate_wav(wav_path)
 
 

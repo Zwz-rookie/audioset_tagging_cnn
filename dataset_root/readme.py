@@ -26,8 +26,9 @@ python main train
 --cuda
 测试模型
 python inference audio_tagging
---model_type="Cnn14_16k_Mod"
---checkpoint_path="Cnn14_16k_mAP=0.438.pth"
---audio_path="resources/R9_ZSCveAHg_7s.wav"
+--sample_rate=8000
+--model_type="MobileNetV2_Mod"
+--checkpoint_path="MobileNetV2_Mod_mAP=0.383.pth"
+--audio_path="resources/Channel_2_Pos_1009.wav"
 --cuda
 """
