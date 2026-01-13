@@ -6,6 +6,7 @@ from torchlibrosa.augmentation import SpecAugmentation
 
 from pytorch_utils import do_mixup, interpolate, pad_framewise_output
 import gk_kaldi
+import torchaudio.compliance.kaldi as ta_kaldi
 import time
 import os
 import numpy as np
@@ -2809,7 +2810,7 @@ class CNNLSTMExtractor(nn.Module):
         # 批量处理所有音频
         fbanks = []
         for i in range(waveforms.size(0)):
-            fbank = gk_kaldi.fbank(
+            fbank = ta_kaldi.fbank(
                 waveforms[i],
                 num_mel_bins=64,
                 sample_frequency=16000,

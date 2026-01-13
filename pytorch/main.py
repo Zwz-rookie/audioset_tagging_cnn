@@ -28,7 +28,7 @@ from evaluate import Evaluator
 import config
 from losses import get_loss_func
 
-checkpoint_path = "MobileNetV2_Mod_mAP=0.383.pth"
+checkpoint_path = "MobileNetV2_Mod_GM_V11.pth"
 
 def train(args):
     """Train AudioSet tagging model. 
@@ -121,6 +121,7 @@ def train(args):
         device = 'cpu'
     
     # Model
+    print("checkpoint_path路径： ", checkpoint_path)
     Model = eval(model_type)
     if not model_type.endswith("_Mod"):
         model = Model(sample_rate=sample_rate, window_size=window_size,

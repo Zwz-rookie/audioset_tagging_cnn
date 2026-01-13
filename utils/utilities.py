@@ -98,7 +98,7 @@ def float32_to_int16_origin(x):
     return (x * 32767.).astype(np.int16)
 
 def float32_to_int16(x):
-    if np.max(np.abs(x)) <= 1.2:
+    if np.max(np.abs(x)) <= 1.5:
         x = np.clip(x, -1, 1)
     else:
         max_val = np.max(np.abs(x))
