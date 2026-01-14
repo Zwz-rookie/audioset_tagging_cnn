@@ -19,6 +19,9 @@ class AIFlywheel:
         # 阈值配置
         self.increment_threshold = 00
         
+        # 训练状态跟踪
+        self.is_training = False
+        
         # 加载类别标签
         self.class_labels = self._load_class_labels()
         
@@ -261,6 +264,9 @@ class AIFlywheel:
         if checkpoint_path:
             command.extend(["--checkpoint_path", checkpoint_path])
         
+        # 设置训练状态为正在进行
+        self.is_training = True
+        
         try:
             result = subprocess.run(
                 command,
@@ -274,11 +280,13 @@ class AIFlywheel:
             print("模型训练成功")
             print("输出信息:")
             print(result.stdout)
+            self.is_training = False  # 训练完成，重置训练状态
             return True
         except subprocess.CalledProcessError as e:
             print(f"模型训练失败: {e}")
             print("输出信息:")
             print(e.output)
+            self.is_training = False  # 训练失败，重置训练状态
             return False
         except UnicodeDecodeError as e:
             print(f"模型训练过程中编码错误: {e}")
@@ -294,12 +302,15 @@ class AIFlywheel:
                     cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # 项目根目录
                 )
                 print(result.stdout)
+                self.is_training = False  # 训练完成，重置训练状态
                 return True
             except Exception as e2:
                 print(f"GBK编码解码也失败: {e2}")
+                self.is_training = False  # 训练失败，重置训练状态
                 return False
         except Exception as e:
             print(f"模型训练失败: {e}")
+            self.is_training = False  # 训练失败，重置训练状态
             return False
     
     def _trigger_data_compression(self):
@@ -321,6 +332,11 @@ class AIFlywheel:
         """扫描并处理wav文件增量"""
         print(f"\n开始扫描 [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]")
         
+        # 检查是否正在训练，如果是则跳过本次扫描
+        if self.is_training:
+            print("模型正在训练中，跳过本次扫描")
+            return False
+            
         # 统计当前wav文件数量
         current_count = self._count_wav_files()
         print(f"当前wav文件数量: {current_count}")
@@ -373,4 +389,4 @@ if __name__ == "__main__":
     flywheel.scan_and_process()
     
     # 取消注释以下代码以持续运行（定时扫描）
-    # flywheel.run_continuous(interval=3600)  # 每小时扫描一次
+    flywheel.run_continuous(interval=3600)  # 每小时扫描一次
