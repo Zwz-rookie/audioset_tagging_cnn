@@ -28,8 +28,6 @@ from evaluate import Evaluator
 import config
 from losses import get_loss_func
 
-checkpoint_path = "MobileNetV2_Mod_GM_V11.pth"
-
 def train(args):
     """Train AudioSet tagging model with epoch-based approach. 
     
@@ -50,8 +48,10 @@ def train(args):
       early_stop: int
       accumulation_steps: int
       cuda: bool
+      checkpoint_path: str
     """
-    global checkpoint_path
+    # 使用命令行参数中的checkpoint_path，默认为"MobileNetV2_Mod_GM_V11.pth"
+    checkpoint_path = args.checkpoint_path if args.checkpoint_path else "MobileNetV2_Mod_GM_V11.pth"
     # Arugments & parameters
     workspace = args.workspace
     data_type = args.data_type
@@ -445,6 +445,7 @@ if __name__ == '__main__':
     parser_train.add_argument('--early_stop', type=int, default=100)
     parser_train.add_argument('--patience', type=int, default=10)
     parser_train.add_argument('--cuda', action='store_true', default=False)
+    parser_train.add_argument('--checkpoint_path', type=str, default="MobileNetV2_Mod_GM_V11.pth", help='路径到预训练模型的checkpoint文件')
     
     args = parser.parse_args()
     args.filename = get_filename(__file__)

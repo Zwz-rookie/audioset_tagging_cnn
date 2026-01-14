@@ -232,7 +232,7 @@ class AIFlywheel:
             print(f"索引文件生成失败: {e}")
             return False
     
-    def _trigger_model_training(self):
+    def _trigger_model_training(self, checkpoint_path=None):
         """触发模型训练"""
         print("\n开始模型训练...")
         command = [
@@ -256,6 +256,10 @@ class AIFlywheel:
             "--patience", "20",
             "--cuda"
         ]
+        
+        # 添加checkpoint路径参数（如果提供）
+        if checkpoint_path:
+            command.extend(["--checkpoint_path", checkpoint_path])
         
         try:
             result = subprocess.run(
@@ -338,6 +342,7 @@ class AIFlywheel:
             # 触发数据集压缩
             if self._trigger_data_compression():
                 # 数据集压缩成功后，触发模型训练
+                # self._trigger_model_training("path/to/your/checkpoint.pth")
                 self._trigger_model_training()
             
             # 更新状态
