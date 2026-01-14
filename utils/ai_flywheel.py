@@ -252,7 +252,8 @@ class AIFlywheel:
             "--batch_size", "32",
             "--learning_rate", "1e-3",
             "--resume_iteration", "0",
-            "--early_stop", "1000000",
+            "--early_stop", "100000",
+            "--patience", "20",
             "--cuda"
         ]
         
@@ -261,8 +262,9 @@ class AIFlywheel:
                 command,
                 check=True,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,  # 合并标准输出和错误输出
+                stderr=subprocess.PIPE,
                 text=True,
+                encoding='utf-8',
                 cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # 项目根目录
             )
             print("模型训练成功")
@@ -274,6 +276,24 @@ class AIFlywheel:
             print("输出信息:")
             print(e.output)
             return False
+        except UnicodeDecodeError as e:
+            print(f"模型训练过程中编码错误: {e}")
+            print("尝试使用GBK编码解码输出:")
+            try:
+                result = subprocess.run(
+                    command,
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,  # 合并标准输出和错误输出
+                    text=True,
+                    encoding='gbk',
+                    cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # 项目根目录
+                )
+                print(result.stdout)
+                return True
+            except Exception as e2:
+                print(f"GBK编码解码也失败: {e2}")
+                return False
         except Exception as e:
             print(f"模型训练失败: {e}")
             return False
