@@ -4,6 +4,7 @@ import csv
 import glob
 import hashlib
 from datetime import datetime
+import subprocess
 
 
 class AIFlywheel:
@@ -16,7 +17,7 @@ class AIFlywheel:
         self.state_file = os.path.join(self.metadata_dir, "ai_flywheel_state.txt")
         
         # 阈值配置
-        self.increment_threshold = 1000
+        self.increment_threshold = 00
         
         # 加载类别标签
         self.class_labels = self._load_class_labels()
@@ -168,6 +169,130 @@ class AIFlywheel:
         else:
             print("没有发现需要添加的新记录")
 
+    def _generate_hdf5(self):
+        """生成HDF5文件"""
+        print("开始生成HDF5文件...")
+        command = [
+            "python", "utils/dataset.py", "pack_waveforms_to_hdf5",
+            "--csv_path", "dataset_root_GM/metadata/gk_train_segments_GM.csv",
+            "--audios_dir", "dataset_root_GM/audios/balanced_train_segments_GM",
+            "--waveforms_hdf5_path", "dataset_hdf5_GM/hdf5s/waveforms/balanced_train.h5"
+        ]
+        
+        try:
+            result = subprocess.run(
+                command,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,  # subprocess.STDOUT合并标准输出和错误输出
+                text=True,
+                cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # 项目根目录
+            )
+            print("HDF5文件生成成功")
+            print("输出信息:")
+            print(result.stdout)
+            return True
+        except subprocess.CalledProcessError as e:
+            print(f"HDF5文件生成失败: {e}")
+            print("错误信息:")
+            print(e.stderr)
+            return False
+        except Exception as e:
+            print(f"HDF5文件生成失败: {e}")
+            return False
+    
+    def _generate_indexes(self):
+        """生成索引文件"""
+        print("开始生成索引文件...")
+        command = [
+            "python", "utils/create_indexes.py", "create_indexes",
+            "--waveforms_hdf5_path", "dataset_hdf5_GM/hdf5s/waveforms/balanced_train.h5",
+            "--indexes_hdf5_path", "dataset_hdf5_GM/hdf5s/indexes/balanced_train.h5"
+        ]
+        
+        try:
+            result = subprocess.run(
+                command,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,  # subprocess.STDOUT合并标准输出和错误输出
+                text=True,
+                cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # 项目根目录
+            )
+            print("索引文件生成成功")
+            print("输出信息:")
+            print(result.stdout)
+            return True
+        except subprocess.CalledProcessError as e:
+            print(f"索引文件生成失败: {e}")
+            print("错误信息:")
+            print(e.stderr)
+            return False
+        except Exception as e:
+            print(f"索引文件生成失败: {e}")
+            return False
+    
+    def _trigger_model_training(self):
+        """触发模型训练"""
+        print("\n开始模型训练...")
+        command = [
+            "python", "pytorch/train_epoch.py", "train",
+            "--data_type", "balanced_train",
+            "--workspace", "dataset_hdf5_GM",
+            "--sample_rate", "8000",
+            "--window_size", "1024",
+            "--hop_size", "320",
+            "--mel_bins", "64",
+            "--fmin", "50",
+            "--fmax", "14000",
+            "--model_type", "MobileNetV2_Mod",
+            "--loss_type", "clip_bce",
+            "--balanced", "balanced",
+            "--augmentation", "none",
+            "--batch_size", "32",
+            "--learning_rate", "1e-3",
+            "--resume_iteration", "0",
+            "--early_stop", "1000000",
+            "--cuda"
+        ]
+        
+        try:
+            result = subprocess.run(
+                command,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,  # 合并标准输出和错误输出
+                text=True,
+                cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # 项目根目录
+            )
+            print("模型训练成功")
+            print("输出信息:")
+            print(result.stdout)
+            return True
+        except subprocess.CalledProcessError as e:
+            print(f"模型训练失败: {e}")
+            print("输出信息:")
+            print(e.output)
+            return False
+        except Exception as e:
+            print(f"模型训练失败: {e}")
+            return False
+    
+    def _trigger_data_compression(self):
+        """触发数据集压缩脚本"""
+        print("\n开始数据集压缩处理...")
+        
+        # 生成HDF5文件
+        if not self._generate_hdf5():
+            return False
+        
+        # 生成索引文件
+        if not self._generate_indexes():
+            return False
+        
+        print("\n数据集压缩处理完成")
+        return True
+    
     def scan_and_process(self):
         """扫描并处理wav文件增量"""
         print(f"\n开始扫描 [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]")
@@ -181,7 +306,7 @@ class AIFlywheel:
         increment = current_count - self.previous_count
         print(f"文件增量: {increment}")
         
-        if increment > self.increment_threshold:
+        if increment >= self.increment_threshold:
             print(f"文件增量达到 {increment}，超过阈值 {self.increment_threshold}，开始处理...")
             
             # 获取所有wav文件
@@ -189,6 +314,11 @@ class AIFlywheel:
             
             # 添加新记录
             self._add_new_records(all_wav_files)
+            
+            # 触发数据集压缩
+            if self._trigger_data_compression():
+                # 数据集压缩成功后，触发模型训练
+                self._trigger_model_training()
             
             # 更新状态
             self.previous_count = current_count
