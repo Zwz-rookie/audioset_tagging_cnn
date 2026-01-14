@@ -28,7 +28,7 @@ def audio_tagging(args):
     model_type = args.model_type
     checkpoint_path = args.checkpoint_path
     audio_path = args.audio_path
-    device = torch.device('cuda') if args.cuda and torch.cuda.is_available() else torch.device('cpu')
+    device = 'cpu'#torch.device('cuda') if args.cuda and torch.cuda.is_available() else torch.device('cpu')
     
     classes_num = config.classes_num
     labels = config.labels
@@ -105,6 +105,8 @@ def audio_tagging(args):
         # model = torch.nn.DataParallel(model)
     else:
         print('Using CPU.')
+
+    # model = torch.jit.load("MobileNetV2_Mod_GM_trace_cuda.pt", map_location=device)
     
     # Load audio
     (waveform, _) = librosa.core.load(audio_path, sr=sample_rate, mono=True)
@@ -117,7 +119,8 @@ def audio_tagging(args):
         model.eval()
         # example_input = waveform
         # traced = torch.jit.trace(model, example_input, strict=False)
-        # traced.save("MobileNetV2_Mod_trace.pt")
+        # save_name = os.path.basename(checkpoint_path).replace(".pth", "_trace.pt")
+        # traced.save(save_name)
         print('Inference start...')
         start_time = time.time()
         batch_output_dict = model(waveform)
@@ -128,10 +131,12 @@ def audio_tagging(args):
 
     sorted_indexes = np.argsort(clipwise_output)[::-1]
 
+    temp_res = {}
     # Print audio tagging top probabilities
     for k in range(3):
         print('{}: {:.3f}'.format(np.array(labels)[sorted_indexes[k]], 
             clipwise_output[sorted_indexes[k]]))
+        temp_res[np.array(labels)[sorted_indexes[k]]] = clipwise_output[sorted_indexes[k]]
 
     # Print embedding
     if 'embedding' in batch_output_dict.keys():
