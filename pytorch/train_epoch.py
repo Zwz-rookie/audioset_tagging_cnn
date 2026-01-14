@@ -28,6 +28,94 @@ from evaluate import Evaluator
 import config
 from losses import get_loss_func
 
+
+def serialize_model(checkpoint_path, model_type, mel_bins, classes_num, output_dir):
+    """
+    模型序列化函数，加载最优模型并进行CPU和GPU版本的序列化
+    
+    Args:
+        checkpoint_path: str, 最优模型的checkpoint路径
+        model_type: str, 模型类型
+        mel_bins: int, mel频谱的bin数量
+        classes_num: int, 分类类别数量
+        output_dir: str, 输出目录
+        
+    Returns:
+        bool, 序列化是否成功
+    """
+    print("开始模型序列化...")
+    
+    try:
+        # 创建输出目录
+        create_folder(output_dir)
+        
+        # 1. 加载模型到CPU
+        print("加载模型到CPU...")
+        Model = eval(model_type)
+        model = None
+        
+        if not model_type.endswith("_Mod"):
+            model = Model(sample_rate=8000, window_size=1024,
+                        hop_size=320, mel_bins=mel_bins, fmin=50, fmax=14000,
+                        classes_num=classes_num)
+        elif model_type == 'MobileNetV2_Mod':
+            model = Model(mel_bins=mel_bins, classes_num=classes_num)
+        else:
+            model = Model(mel_bins=mel_bins, classes_num=classes_num)
+            
+        checkpoint = torch.load(checkpoint_path, map_location='cpu')
+        model.load_state_dict(checkpoint['model'])
+        model.eval()
+        
+        # 2. 创建示例输入（音频数据长度为32000）
+        print("创建示例输入...")
+        example_input = torch.randn(1, 32000)
+        
+        # 3. CPU版本序列化
+        print("序列化CPU版本模型...")
+        try:
+            cpu_output_path = os.path.abspath(os.path.join(output_dir, '{}_trace.pt'.format(model_type)))
+            if not os.path.exists(os.path.dirname(cpu_output_path)):
+                os.makedirs(os.path.dirname(cpu_output_path), exist_ok=True)
+            
+            traced_cpu = torch.jit.trace(model, example_input, strict=False)
+            traced_cpu.save(cpu_output_path)
+            print(f"✅ CPU版本模型已保存到: {cpu_output_path}")
+        except Exception as e:
+            print(f"❌ CPU版本模型序列化失败: {e}")
+            return False
+        
+        # 4. GPU版本序列化（如果有GPU可用）
+        if torch.cuda.is_available():
+            print("序列化GPU版本模型...")
+            try:
+                # 确保输出路径是绝对路径
+                gpu_output_path = os.path.abspath(os.path.join(output_dir, '{}_trace_cuda.pt'.format(model_type)))
+                # 检查目录是否存在
+                if not os.path.exists(os.path.dirname(gpu_output_path)):
+                    os.makedirs(os.path.dirname(gpu_output_path), exist_ok=True)
+                
+                # 移动模型和输入到GPU
+                model.cuda()
+                example_input_cuda = example_input.cuda()
+                
+                # 追踪模型
+                traced_cuda = torch.jit.trace(model, example_input_cuda, strict=False)
+                
+                # 保存序列化的GPU模型
+                traced_cuda.save(gpu_output_path)
+                print(f"✅ GPU版本模型已保存到: {gpu_output_path}")
+            except Exception as e:
+                print(f"❌ GPU版本模型序列化失败: {e}")
+                # 无论GPU序列化是否成功，继续执行，至少保留CPU版本
+        
+        print("模型序列化完成！")
+        return True
+        
+    except Exception as e:
+        print(f"❌ 模型序列化失败: {e}")
+        return False
+
 def train(args):
     """Train AudioSet tagging model with epoch-based approach. 
     
@@ -210,24 +298,24 @@ def train(args):
     print(f"训练数据集长度: {train_sampler.audios_num} 个样本")
     
     # Evaluate sampler
-    eval_bal_sampler = EvaluateSampler(
-        indexes_hdf5_path=eval_bal_indexes_hdf5_path, batch_size=batch_size)
-
-    eval_test_sampler = EvaluateSampler(
-        indexes_hdf5_path=eval_test_indexes_hdf5_path, batch_size=batch_size)
-
-    # 打印验证和测试数据集长度
-    print(f"验证集(balanced)长度: {eval_bal_sampler.audios_num} 个样本")
-    print(f"测试集长度: {eval_test_sampler.audios_num} 个样本")
+    # eval_bal_sampler = EvaluateSampler(
+    #     indexes_hdf5_path=eval_bal_indexes_hdf5_path, batch_size=batch_size)
+    #
+    # eval_test_sampler = EvaluateSampler(
+    #     indexes_hdf5_path=eval_test_indexes_hdf5_path, batch_size=batch_size)
+    #
+    # # 打印验证和测试数据集长度
+    # print(f"验证集(balanced)长度: {eval_bal_sampler.audios_num} 个样本")
+    # print(f"测试集长度: {eval_test_sampler.audios_num} 个样本")
 
     # Data loader
     train_loader = torch.utils.data.DataLoader(dataset=dataset, 
         batch_sampler=train_sampler, collate_fn=collate_fn, 
         num_workers=num_workers, pin_memory=True)
     
-    eval_bal_loader = torch.utils.data.DataLoader(dataset=dataset,
-        batch_sampler=eval_bal_sampler, collate_fn=collate_fn,
-        num_workers=num_workers, pin_memory=True)
+    # eval_bal_loader = torch.utils.data.DataLoader(dataset=dataset,
+    #     batch_sampler=eval_bal_sampler, collate_fn=collate_fn,
+    #     num_workers=num_workers, pin_memory=True)
 
     # eval_test_loader = torch.utils.data.DataLoader(dataset=dataset,
     #     batch_sampler=eval_test_sampler, collate_fn=collate_fn,
@@ -418,8 +506,20 @@ def train(args):
         logging.info('Epoch checkpoint saved to {}'.format(checkpoint_path))
         
         train_bgn_time = time.time()
-        
-
+    
+    # 训练完成后，自动进行模型序列化
+    best_model_path = os.path.join(checkpoints_dir, 'best_model.pth')
+    if os.path.exists(best_model_path):
+        print("训练完成，开始模型序列化...")
+        serialize_model(
+            checkpoint_path=best_model_path,
+            model_type=model_type,
+            mel_bins=mel_bins,
+            classes_num=classes_num,
+            output_dir=os.path.dirname(best_model_path)
+        )
+    else:
+        print("警告：未找到最佳模型文件，无法进行序列化")
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Example of parser. ')
