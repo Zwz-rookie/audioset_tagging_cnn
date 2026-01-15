@@ -74,7 +74,7 @@ def serialize_model(checkpoint_path, model_type, mel_bins, classes_num, output_d
         # 3. CPU版本序列化
         print("序列化CPU版本模型...")
         try:
-            cpu_output_path = os.path.abspath(os.path.join(output_dir, '{}_trace.pt'.format(model_type)))
+            cpu_output_path = os.path.abspath(os.path.join(output_dir, '{}_GM_trace.pt'.format(model_type)))
             if not os.path.exists(os.path.dirname(cpu_output_path)):
                 os.makedirs(os.path.dirname(cpu_output_path), exist_ok=True)
             
@@ -90,7 +90,7 @@ def serialize_model(checkpoint_path, model_type, mel_bins, classes_num, output_d
             print("序列化GPU版本模型...")
             try:
                 # 确保输出路径是绝对路径
-                gpu_output_path = os.path.abspath(os.path.join(output_dir, '{}_trace_cuda.pt'.format(model_type)))
+                gpu_output_path = os.path.abspath(os.path.join(output_dir, '{}_GM_trace_cuda.pt'.format(model_type)))
                 # 检查目录是否存在
                 if not os.path.exists(os.path.dirname(gpu_output_path)):
                     os.makedirs(os.path.dirname(gpu_output_path), exist_ok=True)
