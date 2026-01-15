@@ -1,11 +1,39 @@
 import numpy as np
 import csv
+import os
+from pathlib import Path
+# 获取当前文件路径并找到根目录
+project_root = Path(__file__).resolve().parent.parent
+# 切换当前工作目录到根目录
+os.chdir(project_root)
+# 验证：打印当前工作目录
+# print("Config workpath: ", os.getcwd())
 
-sample_rate = 32000
-clip_samples = sample_rate * 5     # Audio clips are 10-second
+sample_rate = 32000  # 存到hdf5的重采样频率
+clip_samples = sample_rate * 5     # 存到hdf5的单个波形最大数据长度 Audio clips are 10-second
+
+# 配置路径
+data_mode = 'SEA'
+if data_mode == 'GM':
+    dataset_root = r'e:\Code\930_Codes\Audio_classify\audioset_tagging_cnn'
+    dataset_path = 'dataset_root_GM/metadata/class_labels_indices_GM.csv'
+    audio_dir = dataset_root + r"\dataset_root_GM\audios\balanced_train_segments_GM"
+    metadata_dir = dataset_root + r"\dataset_root_GM\metadata"
+    class_labels_file = os.path.join(metadata_dir, "class_labels_indices_GM.csv")
+    train_segments_file = os.path.join(metadata_dir, "gk_train_segments_GM.csv")
+    state_file = os.path.join(metadata_dir, "ai_flywheel_state.txt")
+else:
+    dataset_root = r'e:\Code\930_Codes\Audio_classify\audioset_tagging_cnn'
+    dataset_path = 'dataset_root/metadata/class_labels_indices.csv'
+    audio_dir = dataset_root + r"\dataset_root\audios\balanced_train_segments"
+    metadata_dir = dataset_root + r"\dataset_root\metadata"
+    class_labels_file = os.path.join(metadata_dir, "class_labels_indices.csv")
+    train_segments_file = os.path.join(metadata_dir, "gk_train_segments.csv")
+    state_file = os.path.join(metadata_dir, "ai_flywheel_state.txt")
+
 
 # Load label
-with open('dataset_root/metadata/class_labels_indices.csv', 'r') as f:
+with open(dataset_path, 'r') as f:
     reader = csv.reader(f, delimiter=',')
     lines = list(reader)
 

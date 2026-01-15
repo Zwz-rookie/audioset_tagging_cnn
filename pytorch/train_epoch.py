@@ -404,6 +404,7 @@ def train(args):
     
     # Training loop
     for epoch in range(current_epoch, early_stop):
+        logging.info('------------------------------------')
         print(f"--- Epoch {epoch + 1}/{early_stop} ---")
         
         # Training phase
@@ -473,8 +474,6 @@ def train(args):
         logging.info(
             'Epoch: {}, train time: {:.3f} s, validate time: {:.3f} s'
                 ''.format(epoch + 1, train_time, validate_time))
-
-        logging.info('------------------------------------')
 
         # Update learning rate scheduler
         scheduler.step(avg_train_loss)
