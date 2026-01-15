@@ -358,8 +358,8 @@ class AIFlywheel:
             # 触发数据集压缩
             if self._trigger_data_compression():
                 # 数据集压缩成功后，触发模型训练
-                # self._trigger_model_training("path/to/your/checkpoint.pth")
-                self._trigger_model_training()
+                self._trigger_model_training("MobileNetV2_Mod_GM.pth")
+                # self._trigger_model_training()
             
             # 更新状态
             self.previous_count = current_count
