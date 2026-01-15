@@ -29,7 +29,7 @@ import config
 from losses import get_loss_func
 
 
-def serialize_model(checkpoint_path, model_type, mel_bins, classes_num, output_dir):
+def serialize_model(checkpoint_path, model_type, mel_bins, classes_num, output_dir, source_checkpoint_path):
     """
     模型序列化函数，加载最优模型并进行CPU和GPU版本的序列化
     
@@ -39,6 +39,7 @@ def serialize_model(checkpoint_path, model_type, mel_bins, classes_num, output_d
         mel_bins: int, mel频谱的bin数量
         classes_num: int, 分类类别数量
         output_dir: str, 输出目录
+        source_checkpoint_path: str, 原始训练时使用的checkpoint路径
         
     Returns:
         bool, 序列化是否成功
@@ -46,8 +47,9 @@ def serialize_model(checkpoint_path, model_type, mel_bins, classes_num, output_d
     print("开始模型序列化...")
     
     try:
-        # 创建输出目录
-        create_folder(output_dir)
+        # 直接使用工程目录作为输出目录，避免路径过长问题
+        project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        print(f"使用工程目录作为输出目录: {project_dir}")
         
         # 1. 加载模型到CPU
         print("加载模型到CPU...")
@@ -71,12 +73,15 @@ def serialize_model(checkpoint_path, model_type, mel_bins, classes_num, output_d
         print("创建示例输入...")
         example_input = torch.randn(1, 32000)
         
-        # 3. CPU版本序列化
+        # 获取源checkpoint的文件名（不含路径）
+        source_checkpoint_filename = os.path.basename(source_checkpoint_path)
+        # 去除文件名的扩展名，如.pth
+        source_checkpoint_name = os.path.splitext(source_checkpoint_filename)[0]
+        
+        # 3. CPU版本序列化（直接保存到工程目录）
         print("序列化CPU版本模型...")
         try:
-            cpu_output_path = os.path.abspath(os.path.join(output_dir, '{}_GM_trace.pt'.format(model_type)))
-            if not os.path.exists(os.path.dirname(cpu_output_path)):
-                os.makedirs(os.path.dirname(cpu_output_path), exist_ok=True)
+            cpu_output_path = os.path.abspath(os.path.join(project_dir, '{}_trace.pt'.format(source_checkpoint_name)))
             
             traced_cpu = torch.jit.trace(model, example_input, strict=False)
             traced_cpu.save(cpu_output_path)
@@ -85,15 +90,12 @@ def serialize_model(checkpoint_path, model_type, mel_bins, classes_num, output_d
             print(f"❌ CPU版本模型序列化失败: {e}")
             return False
         
-        # 4. GPU版本序列化（如果有GPU可用）
+        # 4. GPU版本序列化（如果有GPU可用，直接保存到工程目录）
         if torch.cuda.is_available():
             print("序列化GPU版本模型...")
             try:
-                # 确保输出路径是绝对路径
-                gpu_output_path = os.path.abspath(os.path.join(output_dir, '{}_GM_trace_cuda.pt'.format(model_type)))
-                # 检查目录是否存在
-                if not os.path.exists(os.path.dirname(gpu_output_path)):
-                    os.makedirs(os.path.dirname(gpu_output_path), exist_ok=True)
+                # 确保输出路径是绝对路径且较短
+                gpu_output_path = os.path.abspath(os.path.join(project_dir, '{}_trace_cuda.pt'.format(source_checkpoint_name)))
                 
                 # 移动模型和输入到GPU
                 model.cuda()
@@ -103,11 +105,33 @@ def serialize_model(checkpoint_path, model_type, mel_bins, classes_num, output_d
                 traced_cuda = torch.jit.trace(model, example_input_cuda, strict=False)
                 
                 # 保存序列化的GPU模型
-                traced_cuda.save(gpu_output_path)
-                print(f"✅ GPU版本模型已保存到: {gpu_output_path}")
+                # 使用try-finally确保资源正确释放
+                try:
+                    traced_cuda.save(gpu_output_path)
+                    print(f"✅ GPU版本模型已保存到: {gpu_output_path}")
+                finally:
+                    # 强制删除CUDA资源
+                    del traced_cuda
+                    del example_input_cuda
+                    model.cpu()
+                    torch.cuda.empty_cache()
+                    
             except Exception as e:
                 print(f"❌ GPU版本模型序列化失败: {e}")
                 # 无论GPU序列化是否成功，继续执行，至少保留CPU版本
+        
+        # 5. 将best_model.pth复制并重命名为checkpoint_path的文件名（直接保存到工程目录）
+        print("复制并命名最佳模型文件...")
+        new_model_filename = source_checkpoint_filename
+        new_model_path = os.path.abspath(os.path.join(project_dir, new_model_filename))
+        try:
+            import shutil
+            shutil.copyfile(checkpoint_path, new_model_path)
+            print(f"✅ 最佳模型已复制到: {new_model_path}")
+        except Exception as e:
+            print(f"❌ 复制最佳模型失败: {e}")
+        
+        # 不需要备份到原输出目录，避免路径过长问题
         
         print("模型序列化完成！")
         return True
@@ -516,7 +540,8 @@ def train(args):
             model_type=model_type,
             mel_bins=mel_bins,
             classes_num=classes_num,
-            output_dir=os.path.dirname(best_model_path)
+            output_dir=os.path.dirname(best_model_path),
+            source_checkpoint_path=args.checkpoint_path
         )
     else:
         print("警告：未找到最佳模型文件，无法进行序列化")
