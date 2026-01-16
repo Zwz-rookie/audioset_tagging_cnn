@@ -13,6 +13,7 @@ sample_rate = 32000  # 存到hdf5的重采样频率
 clip_samples = sample_rate * 5     # 存到hdf5的单个波形最大数据长度 Audio clips are 10-second
 
 # 配置路径
+output_model_pth = r"E:\Code\930_Codes\das-poa-jf930\audio_algorithms"  # 要替换的模型文件的位置
 data_mode = 'SEA'
 if data_mode == 'GM':
     dataset_root = r'e:\Code\930_Codes\Audio_classify\audioset_tagging_cnn'

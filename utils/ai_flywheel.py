@@ -3,18 +3,21 @@ import time
 import csv
 import glob
 import hashlib
+import shutil
 from datetime import datetime
 import subprocess
+import config
 
 
 class AIFlywheel:
     def __init__(self):
         # 配置路径
-        self.audio_dir = r"e:\Code\930_Codes\Audio_classify\audioset_tagging_cnn\dataset_root_GM\audios\balanced_train_segments_GM"
-        self.metadata_dir = r"e:\Code\930_Codes\Audio_classify\audioset_tagging_cnn\dataset_root_GM\metadata"
-        self.class_labels_file = os.path.join(self.metadata_dir, "class_labels_indices_GM.csv")
-        self.train_segments_file = os.path.join(self.metadata_dir, "gk_train_segments_GM.csv")
-        self.state_file = os.path.join(self.metadata_dir, "ai_flywheel_state.txt")
+        self.audio_dir = config.audio_dir
+        self.metadata_dir = config.metadata_dir
+        self.class_labels_file = config.class_labels_file
+        self.train_segments_file = config.train_segments_file
+        self.state_file = config.state_file
+        self.output_model_pth = config.output_model_pth
         
         # 阈值配置
         self.increment_threshold = 00
@@ -303,6 +306,37 @@ class AIFlywheel:
                 )
                 print(result.stdout)
                 self.is_training = False  # 训练完成，重置训练状态
+
+                # 训练完成后，将序列化的模型文件复制到指定目录
+                project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                target_dir = self.output_model_pth
+
+                # 获取源文件路径
+                source_checkpoint_name = "MobileNetV2_Mod"
+                cpu_model_file = os.path.join(project_dir, f"{source_checkpoint_name}_trace.pt")
+                gpu_model_file = os.path.join(project_dir, f"{source_checkpoint_name}_trace_cuda.pt")
+                model_file = os.path.join(project_dir, f"{source_checkpoint_name}.pth")
+
+                # 确保目标目录存在
+                os.makedirs(target_dir, exist_ok=True)
+
+                # 复制模型文件到目标目录
+                try:
+                    if os.path.exists(cpu_model_file):
+                        shutil.copy2(cpu_model_file, target_dir)
+                        print(f"✅ CPU模型文件已复制到: {target_dir}")
+
+                    if os.path.exists(gpu_model_file):
+                        shutil.copy2(gpu_model_file, target_dir)
+                        print(f"✅ GPU模型文件已复制到: {target_dir}")
+
+                    # if os.path.exists(model_file):
+                    #     shutil.copy2(model_file, target_dir)
+                    #     print(f"✅ 模型文件已复制到: {target_dir}")
+
+                except Exception as e:
+                    print(f"❌ 复制模型文件: {e}")
+
                 return True
             except Exception as e2:
                 print(f"GBK编码解码也失败: {e2}")
