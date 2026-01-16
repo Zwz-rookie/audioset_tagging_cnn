@@ -1,4 +1,7 @@
 import os
+# 设置环境变量为SEA，确保使用SEA配置
+os.environ['AUDIO_CLASSIFY_DATA_MODE'] = 'SEA'
+
 import time
 import csv
 import glob

@@ -14,7 +14,8 @@ clip_samples = sample_rate * 5     # 存到hdf5的单个波形最大数据长度
 
 # 配置路径
 output_model_pth = r"E:\Code\930_Codes\das-poa-jf930\audio_algorithms"  # 要替换的模型文件的位置
-data_mode = 'SEA'
+# 从环境变量中获取 data_mode，如果没有设置，则默认为 'GM'
+data_mode = os.environ.get('AUDIO_CLASSIFY_DATA_MODE', 'GM')
 if data_mode == 'GM':
     dataset_root = r'e:\Code\930_Codes\Audio_classify\audioset_tagging_cnn'
     dataset_path = 'dataset_root_GM/metadata/class_labels_indices_GM.csv'

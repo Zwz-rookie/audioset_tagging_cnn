@@ -1,4 +1,7 @@
 import os
+# 设置环境变量为GM，确保使用GM配置
+os.environ['AUDIO_CLASSIFY_DATA_MODE'] = 'GM'
+
 import time
 import csv
 import glob
