@@ -23,7 +23,7 @@ class AIFlywheel:
         self.output_model_pth = config.output_model_pth
         
         # 阈值配置
-        self.increment_threshold = 00
+        self.increment_threshold = 150
         
         # 训练状态跟踪
         self.is_training = False
@@ -258,7 +258,7 @@ class AIFlywheel:
             "--loss_type", "clip_bce",
             "--balanced", "balanced",
             "--augmentation", "none",
-            "--batch_size", "32",
+            "--batch_size", "128",
             "--learning_rate", "1e-3",
             "--resume_iteration", "0",
             "--early_stop", "100000",
