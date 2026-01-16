@@ -315,7 +315,7 @@ class AIFlywheel:
                 target_dir = self.output_model_pth
 
                 # 获取源文件路径
-                source_checkpoint_name = "MobileNetV2_Mod"
+                source_checkpoint_name = "MobileNetV2_Mod_GM"
                 cpu_model_file = os.path.join(project_dir, f"{source_checkpoint_name}_trace.pt")
                 gpu_model_file = os.path.join(project_dir, f"{source_checkpoint_name}_trace_cuda.pt")
                 model_file = os.path.join(project_dir, f"{source_checkpoint_name}.pth")
