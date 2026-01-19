@@ -287,6 +287,37 @@ class AIFlywheel:
             print("输出信息:")
             print(result.stdout)
             self.is_training = False  # 训练完成，重置训练状态
+
+            # 训练完成后，将序列化的模型文件复制到指定目录
+            project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            target_dir = self.output_model_pth
+
+            # 获取源文件路径
+            source_checkpoint_name = "MobileNetV2_Mod_GM"
+            cpu_model_file = os.path.join(project_dir, f"{source_checkpoint_name}_trace.pt")
+            gpu_model_file = os.path.join(project_dir, f"{source_checkpoint_name}_trace_cuda.pt")
+            model_file = os.path.join(project_dir, f"{source_checkpoint_name}.pth")
+
+            # 确保目标目录存在
+            os.makedirs(target_dir, exist_ok=True)
+
+            # 复制模型文件到目标目录
+            try:
+                if os.path.exists(cpu_model_file):
+                    shutil.copy2(cpu_model_file, target_dir)
+                    print(f"✅ CPU模型文件已复制到: {target_dir}")
+
+                if os.path.exists(gpu_model_file):
+                    shutil.copy2(gpu_model_file, target_dir)
+                    print(f"✅ GPU模型文件已复制到: {target_dir}")
+
+                # if os.path.exists(model_file):
+                #     shutil.copy2(model_file, target_dir)
+                #     print(f"✅ 模型文件已复制到: {target_dir}")
+
+            except Exception as e:
+                print(f"❌ 复制模型文件: {e}")
+
             return True
         except subprocess.CalledProcessError as e:
             print(f"模型训练失败: {e}")
@@ -309,37 +340,6 @@ class AIFlywheel:
                 )
                 print(result.stdout)
                 self.is_training = False  # 训练完成，重置训练状态
-
-                # 训练完成后，将序列化的模型文件复制到指定目录
-                project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                target_dir = self.output_model_pth
-
-                # 获取源文件路径
-                source_checkpoint_name = "MobileNetV2_Mod_GM"
-                cpu_model_file = os.path.join(project_dir, f"{source_checkpoint_name}_trace.pt")
-                gpu_model_file = os.path.join(project_dir, f"{source_checkpoint_name}_trace_cuda.pt")
-                model_file = os.path.join(project_dir, f"{source_checkpoint_name}.pth")
-
-                # 确保目标目录存在
-                os.makedirs(target_dir, exist_ok=True)
-
-                # 复制模型文件到目标目录
-                try:
-                    if os.path.exists(cpu_model_file):
-                        shutil.copy2(cpu_model_file, target_dir)
-                        print(f"✅ CPU模型文件已复制到: {target_dir}")
-
-                    if os.path.exists(gpu_model_file):
-                        shutil.copy2(gpu_model_file, target_dir)
-                        print(f"✅ GPU模型文件已复制到: {target_dir}")
-
-                    # if os.path.exists(model_file):
-                    #     shutil.copy2(model_file, target_dir)
-                    #     print(f"✅ 模型文件已复制到: {target_dir}")
-
-                except Exception as e:
-                    print(f"❌ 复制模型文件: {e}")
-
                 return True
             except Exception as e2:
                 print(f"GBK编码解码也失败: {e2}")
