@@ -11,6 +11,7 @@
 import os
 import subprocess
 import sys
+os.environ['AUDIO_CLASSIFY_DATA_MODE'] = 'SEA'
 
 def run_command(command, description):
     """
