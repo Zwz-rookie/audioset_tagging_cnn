@@ -105,11 +105,11 @@ def remove_dc_offset(audio_wave: np.ndarray):
     # 去除直流分量
     ac_signal = audio_wave - dc_component
 
-    return ac_signal, dc_component
+    return ac_signal
 
 
 def float32_to_int16(x):
-    x = remove_dc_offset(x) # 去除直流分量，优化音频效果
+    x = remove_dc_offset(x)    # 去除直流分量，优化音频效果
     if np.max(np.abs(x)) <= 1.5:
         x = np.clip(x, -1, 1)
     else:
