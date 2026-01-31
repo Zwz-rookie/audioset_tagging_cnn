@@ -97,7 +97,19 @@ def float32_to_int16_origin(x):
     x = np.clip(x, -1, 1)
     return (x * 32767.).astype(np.int16)
 
+
+def remove_dc_offset(audio_wave: np.ndarray):
+    # 计算直流分量（均值）
+    dc_component = np.mean(audio_wave)
+
+    # 去除直流分量
+    ac_signal = audio_wave - dc_component
+
+    return ac_signal, dc_component
+
+
 def float32_to_int16(x):
+    x = remove_dc_offset(x) # 去除直流分量，优化音频效果
     if np.max(np.abs(x)) <= 1.5:
         x = np.clip(x, -1, 1)
     else:
