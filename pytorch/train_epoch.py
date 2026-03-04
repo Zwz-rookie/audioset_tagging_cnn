@@ -12,6 +12,11 @@ import torch.nn.functional as F
 import torch.optim as optim
 import torch.utils.data
 
+test_mode = os.environ.get('AUDIO_CLASSIFY_TEST', 'FALSE')
+val_mode = os.environ.get('AUDIO_CLASSIFY_VAL', 'FALSE')
+test_mode = test_mode == 'TRUE'
+val_mode = val_mode == 'TRUE'
+
 from utilities import (create_folder, get_filename, create_logging, Mixup, 
     StatisticsContainer)
 from models import (Cnn14, Cnn14_no_specaug, Cnn14_no_dropout, 
@@ -194,12 +199,12 @@ def train(args):
     
     train_indexes_hdf5_path = os.path.join(workspace, 'hdf5s', 'indexes', 
         '{}.h5'.format(data_type))
-
-    eval_bal_indexes_hdf5_path = os.path.join(workspace, 
-        'hdf5s', 'indexes', 'balanced_train.h5')
-
-    eval_test_indexes_hdf5_path = os.path.join(workspace, 'hdf5s', 'indexes', 
-        'eval.h5')
+    if val_mode:
+        eval_bal_indexes_hdf5_path = os.path.join(workspace,
+            'hdf5s', 'indexes', 'balanced_train.h5')
+    if test_mode:
+        eval_test_indexes_hdf5_path = os.path.join(workspace, 'hdf5s', 'indexes',
+            'eval.h5')
 
     checkpoints_dir = os.path.join(workspace, 'checkpoints', filename, 
         'sample_rate={},mel_bins={}'.format(sample_rate, mel_bins),
@@ -322,28 +327,27 @@ def train(args):
     print(f"训练数据集长度: {train_sampler.audios_num} 个样本")
     
     # Evaluate sampler
-    # eval_bal_sampler = EvaluateSampler(
-    #     indexes_hdf5_path=eval_bal_indexes_hdf5_path, batch_size=batch_size)
-    #
-    # eval_test_sampler = EvaluateSampler(
-    #     indexes_hdf5_path=eval_test_indexes_hdf5_path, batch_size=batch_size)
-    #
-    # # 打印验证和测试数据集长度
-    # print(f"验证集(balanced)长度: {eval_bal_sampler.audios_num} 个样本")
-    # print(f"测试集长度: {eval_test_sampler.audios_num} 个样本")
+    if val_mode:
+        eval_bal_sampler = EvaluateSampler(
+            indexes_hdf5_path=eval_bal_indexes_hdf5_path, batch_size=batch_size)
+        print(f"验证集(balanced)长度: {eval_bal_sampler.audios_num} 个样本")
+    if test_mode:
+        eval_test_sampler = EvaluateSampler(
+            indexes_hdf5_path=eval_test_indexes_hdf5_path, batch_size=batch_size)
+        print(f"测试集长度: {eval_test_sampler.audios_num} 个样本")
 
     # Data loader
     train_loader = torch.utils.data.DataLoader(dataset=dataset, 
         batch_sampler=train_sampler, collate_fn=collate_fn, 
         num_workers=num_workers, pin_memory=True)
-    
-    # eval_bal_loader = torch.utils.data.DataLoader(dataset=dataset,
-    #     batch_sampler=eval_bal_sampler, collate_fn=collate_fn,
-    #     num_workers=num_workers, pin_memory=True)
-
-    # eval_test_loader = torch.utils.data.DataLoader(dataset=dataset,
-    #     batch_sampler=eval_test_sampler, collate_fn=collate_fn,
-    #     num_workers=num_workers, pin_memory=True)
+    if val_mode:
+        eval_bal_loader = torch.utils.data.DataLoader(dataset=dataset,
+            batch_sampler=eval_bal_sampler, collate_fn=collate_fn,
+            num_workers=num_workers, pin_memory=True)
+    if test_mode:
+        eval_test_loader = torch.utils.data.DataLoader(dataset=dataset,
+            batch_sampler=eval_test_sampler, collate_fn=collate_fn,
+            num_workers=num_workers, pin_memory=True)
 
     if 'mixup' in augmentation:
         mixup_augmenter = Mixup(mixup_alpha=1.)
@@ -455,15 +459,15 @@ def train(args):
         model.eval()
         train_fin_time = time.time()
 
-        # bal_statistics = evaluator.evaluate(eval_bal_loader)
-        # test_statistics = evaluator.evaluate(eval_test_loader)
+        if val_mode:
+            bal_statistics = evaluator.evaluate(eval_bal_loader)
+            val_map = np.mean(bal_statistics['average_precision'])
+            logging.info('Validate bal mAP: {:.3f}'.format(val_map))
+        if test_mode:
+            test_statistics = evaluator.evaluate(eval_test_loader)
+            test_map = np.mean(test_statistics['average_precision'])
+            logging.info('Validate test mAP: {:.3f}'.format(test_map))
 
-        # val_map = np.mean(bal_statistics['average_precision'])
-        # test_map = np.mean(test_statistics['average_precision'])
-
-        # logging.info('Validate bal mAP: {:.3f}'.format(val_map))
-        # logging.info('Validate test mAP: {:.3f}'.format(test_map))
-        #
         # statistics_container.append(epoch * len(train_loader), bal_statistics, data_type='bal')
         # statistics_container.append(epoch * len(train_loader), test_statistics, data_type='test')
         # statistics_container.dump()
