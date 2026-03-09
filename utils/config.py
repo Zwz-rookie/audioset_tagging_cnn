@@ -24,11 +24,19 @@ if data_mode == 'GM':
     class_labels_file = os.path.join(metadata_dir, "class_labels_indices_GM.csv")
     train_segments_file = os.path.join(metadata_dir, "gk_train_segments_GM.csv")
     state_file = os.path.join(metadata_dir, "ai_flywheel_state.txt")
-else:
+elif data_mode == 'SEA':
     dataset_root = r'e:\Code\930_Codes\Audio_classify\audioset_tagging_cnn'
     dataset_path = 'dataset_root/metadata/class_labels_indices.csv'
     audio_dir = dataset_root + r"\dataset_root\audios\balanced_train_segments"
     metadata_dir = dataset_root + r"\dataset_root\metadata"
+    class_labels_file = os.path.join(metadata_dir, "class_labels_indices.csv")
+    train_segments_file = os.path.join(metadata_dir, "gk_train_segments.csv")
+    state_file = os.path.join(metadata_dir, "ai_flywheel_state.txt")
+elif data_mode == 'DM':
+    dataset_root = r'e:\Code\930_Codes\Audio_classify\audioset_tagging_cnn'
+    dataset_path = 'dataset_root_DM/metadata/class_labels_indices.csv'
+    audio_dir = dataset_root + r"\dataset_root_DM\audios\balanced_train_segments"
+    metadata_dir = dataset_root + r"\dataset_root_DM\metadata"
     class_labels_file = os.path.join(metadata_dir, "class_labels_indices.csv")
     train_segments_file = os.path.join(metadata_dir, "gk_train_segments.csv")
     state_file = os.path.join(metadata_dir, "ai_flywheel_state.txt")
