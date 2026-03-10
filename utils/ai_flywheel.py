@@ -137,8 +137,8 @@ class AIFlywheel:
             audio_name = relative_path_no_ext
             record = {
                 'audio_name': audio_name,
-                'start_time': '0',
-                'end_time': '4',
+                'start_time': '6',
+                'end_time': '10',
                 'label': mid
             }
             
@@ -184,7 +184,7 @@ class AIFlywheel:
         """生成HDF5文件"""
         print("开始生成HDF5文件...")
         command = [
-            "python", "utils/dataset.py", "pack_waveforms_to_hdf5",
+            "python", "utils/dataset.py", "pack_waveforms_to_hdf5_strong",
             "--csv_path", "dataset_root_GM/metadata/gk_train_segments_GM.csv",
             "--audios_dir", "dataset_root_GM/audios/balanced_train_segments_GM",
             "--waveforms_hdf5_path", "dataset_hdf5_GM/hdf5s/waveforms/balanced_train.h5"
