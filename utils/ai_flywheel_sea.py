@@ -181,7 +181,7 @@ class AIFlywheel:
         """生成HDF5文件"""
         print("开始生成HDF5文件...")
         command = [
-            "python", "utils/dataset.py", "pack_waveforms_to_hdf5",
+            "python", "utils/dataset.py", "pack_waveforms_to_hdf5_strong",
             "--csv_path", "dataset_root/metadata/gk_train_segments.csv",
             "--audios_dir", "dataset_root/audios/balanced_train_segments",
             "--waveforms_hdf5_path", "dataset_hdf5/hdf5s/waveforms/balanced_train.h5"

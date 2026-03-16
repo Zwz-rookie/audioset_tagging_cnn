@@ -8,3 +8,7 @@ __pycache__
 _logs
 *.pth
 paper_statistics
+/dataset_hdf5/
+/dataset_hdf5_GM/
+/dataset_root_GM/audios/
+/dataset_root/audios/
