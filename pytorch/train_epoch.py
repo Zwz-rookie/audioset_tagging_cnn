@@ -527,7 +527,7 @@ def train(args):
             'sampler': train_sampler.state_dict()}
 
         checkpoint_path = os.path.join(
-            checkpoints_dir, '{}_epochs.pth'.format(epoch + 1))
+            checkpoints_dir, 'last_epochs.pth')
         
         torch.save(checkpoint, checkpoint_path)
         logging.info('Epoch checkpoint saved to {}'.format(checkpoint_path))

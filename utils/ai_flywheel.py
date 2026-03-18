@@ -1,7 +1,7 @@
 import os
 # 设置环境变量为GM，确保使用GM配置
 os.environ['AUDIO_CLASSIFY_DATA_MODE'] = 'GM'
-os.environ['AUDIO_CLASSIFY_TEST'] = 'TRUE'
+os.environ['AUDIO_CLASSIFY_TEST'] = 'FALSE'
 os.environ['AUDIO_CLASSIFY_VAL'] = 'TRUE'
 
 import time
@@ -260,10 +260,10 @@ class AIFlywheel:
             "--loss_type", "clip_bce",
             "--balanced", "balanced",
             "--augmentation", "none",
-            "--batch_size", "128",
+            "--batch_size", "256",
             "--learning_rate", "1e-3",
             "--resume_iteration", "0",
-            "--early_stop", "100000",
+            "--early_stop", "5000",
             "--patience", "20",
             "--cuda"
         ]
@@ -313,9 +313,9 @@ class AIFlywheel:
                     shutil.copy2(gpu_model_file, target_dir)
                     print(f"✅ GPU模型文件已复制到: {target_dir}")
 
-                # if os.path.exists(model_file):
-                #     shutil.copy2(model_file, target_dir)
-                #     print(f"✅ 模型文件已复制到: {target_dir}")
+                if os.path.exists(model_file):
+                    shutil.copy2(model_file, target_dir)
+                    print(f"✅ 模型文件已复制到: {target_dir}")
 
             except Exception as e:
                 print(f"❌ 复制模型文件: {e}")

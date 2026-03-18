@@ -257,10 +257,10 @@ class AIFlywheel:
             "--loss_type", "clip_bce",
             "--balanced", "balanced",
             "--augmentation", "none",
-            "--batch_size", "128",
+            "--batch_size", "256",
             "--learning_rate", "1e-3",
             "--resume_iteration", "0",
-            "--early_stop", "100000",
+            "--early_stop", "5000",
             "--patience", "20",
             "--cuda"
         ]
