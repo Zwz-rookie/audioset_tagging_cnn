@@ -310,9 +310,9 @@ class AIFlywheel:
                     shutil.copy2(gpu_model_file, target_dir)
                     print(f"✅ GPU模型文件已复制到: {target_dir}")
                 
-                # if os.path.exists(model_file):
-                #     shutil.copy2(model_file, target_dir)
-                #     print(f"✅ 模型文件已复制到: {target_dir}")
+                if os.path.exists(model_file):
+                    shutil.copy2(model_file, target_dir)
+                    print(f"✅ 模型文件已复制到: {target_dir}")
                     
             except Exception as e:
                 print(f"❌ 复制模型文件: {e}")
