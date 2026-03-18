@@ -253,8 +253,50 @@ def train(args):
         if "Mod" in checkpoint_path:
             model = Model(mel_bins=mel_bins, classes_num=classes_num)
             checkpoint = torch.load(checkpoint_path, map_location=device)
-            model.load_state_dict(checkpoint['model'])
-            print("✅ 成功加载 MobileNetV2_Mod 模型！")
+            try:
+                # 首先尝试严格加载
+                model.load_state_dict(checkpoint['model'], strict=True)
+                print("成功严格加载模型权重")
+
+            except RuntimeError as e:
+                print(f"严格加载失败: {e}")
+                print("尝试使用 strict=False 模式...")
+
+                try:
+                    # 尝试非严格加载
+                    model.load_state_dict(checkpoint['model'], strict=False)
+                    print("成功使用 strict=False 加载模型权重")
+
+                except Exception as e2:
+                    print(f"strict=False 模式也失败: {e2}")
+                    print("切换到手动过滤权重模式...")
+
+                    # 手动过滤权重
+                    model_dict = model.state_dict()
+                    pretrained_dict = {}
+
+                    # 1. 收集所有匹配的权重
+                    for k, v in checkpoint['model'].items():
+                        if k in model_dict:
+                            if v.shape == model_dict[k].shape:
+                                pretrained_dict[k] = v
+                                print(f"加载参数: {k} (形状匹配)")
+                            else:
+                                print(f"跳过参数: {k} (形状不匹配: 检查点{v.shape} vs 模型{model_dict[k].shape})")
+                        else:
+                            print(f"跳过参数: {k} (不在当前模型中)")
+
+                    # 2. 更新模型状态字典
+                    model_dict.update(pretrained_dict)
+
+                    # 3. 加载过滤后的权重
+                    model.load_state_dict(model_dict)
+                    print("成功通过手动过滤加载模型权重")
+
+                    # 4. 特别处理最后一层（如果需要）
+                    if 'fc_audioset.weight' in checkpoint['model']:
+                        print("检测到分类层，已跳过并保留新模型的随机初始化")
+                        print(f"新分类层形状: {model.fc_audioset.weight.shape}")
         else:
             # 2. 初始化新模型
             model = Model(mel_bins=mel_bins, classes_num=classes_num)
