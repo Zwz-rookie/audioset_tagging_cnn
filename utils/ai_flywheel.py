@@ -298,6 +298,8 @@ class AIFlywheel:
             source_checkpoint_name = "MobileNetV2_Mod_GM"
             cpu_model_file = os.path.join(project_dir, f"{source_checkpoint_name}_trace.pt")
             gpu_model_file = os.path.join(project_dir, f"{source_checkpoint_name}_trace_cuda.pt")
+            cpu_model_file_b10 = os.path.join(project_dir, f"{source_checkpoint_name}_trace_b10.pt")
+            gpu_model_file_b10 = os.path.join(project_dir, f"{source_checkpoint_name}_trace_b10_cuda.pt")
             model_file = os.path.join(project_dir, f"{source_checkpoint_name}.pth")
 
             # 确保目标目录存在
@@ -312,6 +314,14 @@ class AIFlywheel:
                 if os.path.exists(gpu_model_file):
                     shutil.copy2(gpu_model_file, target_dir)
                     print(f"✅ GPU模型文件已复制到: {target_dir}")
+
+                if os.path.exists(cpu_model_file_b10):
+                    shutil.copy2(cpu_model_file_b10, target_dir)
+                    print(f"✅ CPU模型文件(B=10)已复制到: {target_dir}")
+
+                if os.path.exists(gpu_model_file_b10):
+                    shutil.copy2(gpu_model_file_b10, target_dir)
+                    print(f"✅ GPU模型文件(B=10)已复制到: {target_dir}")
 
                 if os.path.exists(model_file):
                     shutil.copy2(model_file, target_dir)
