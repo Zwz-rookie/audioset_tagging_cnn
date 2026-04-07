@@ -197,3 +197,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # python utils/serialize_model.py --data_mode GM --model_type MobileNetV2_Mod --mel_bins 64

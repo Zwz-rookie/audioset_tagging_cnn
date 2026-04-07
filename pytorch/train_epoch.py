@@ -76,7 +76,8 @@ def serialize_model(checkpoint_path, model_type, mel_bins, classes_num, output_d
         
         # 2. 创建示例输入（音频数据长度为32000）
         print("创建示例输入...")
-        example_input = torch.randn(1, 32000)
+        example_input_single = torch.randn(1, 32000)
+        example_input_b10 = torch.randn(10, 32000)
         
         # 获取源checkpoint的文件名（不含路径）
         source_checkpoint_filename = os.path.basename(source_checkpoint_path)
@@ -88,9 +89,17 @@ def serialize_model(checkpoint_path, model_type, mel_bins, classes_num, output_d
         try:
             cpu_output_path = os.path.abspath(os.path.join(project_dir, '{}_trace.pt'.format(source_checkpoint_name)))
             
-            traced_cpu = torch.jit.trace(model, example_input, strict=False)
+            traced_cpu = torch.jit.trace(model, example_input_single, strict=False)
             traced_cpu.save(cpu_output_path)
             print(f"✅ CPU版本模型已保存到: {cpu_output_path}")
+
+            cpu_output_path_b10 = os.path.abspath(os.path.join(project_dir, '{}_trace_b10.pt'.format(source_checkpoint_name)))
+            try:
+                traced_cpu_b10 = torch.jit.trace(model, example_input_b10, strict=False)
+                traced_cpu_b10.save(cpu_output_path_b10)
+                print(f"✅ CPU版本模型(B=10)已保存到: {cpu_output_path_b10}")
+            except Exception as e:
+                print(f"❌ CPU版本模型(B=10)序列化失败: {e}")
         except Exception as e:
             print(f"❌ CPU版本模型序列化失败: {e}")
             return False
@@ -101,23 +110,33 @@ def serialize_model(checkpoint_path, model_type, mel_bins, classes_num, output_d
             try:
                 # 确保输出路径是绝对路径且较短
                 gpu_output_path = os.path.abspath(os.path.join(project_dir, '{}_trace_cuda.pt'.format(source_checkpoint_name)))
+                gpu_output_path_b10 = os.path.abspath(os.path.join(project_dir, '{}_trace_b10_cuda.pt'.format(source_checkpoint_name)))
                 
                 # 移动模型和输入到GPU
                 model.cuda()
-                example_input_cuda = example_input.cuda()
+                example_input_cuda = example_input_single.cuda()
+                example_input_cuda_b10 = example_input_b10.cuda()
                 
                 # 追踪模型
                 traced_cuda = torch.jit.trace(model, example_input_cuda, strict=False)
+                traced_cuda_b10 = torch.jit.trace(model, example_input_cuda_b10, strict=False)
                 
                 # 保存序列化的GPU模型
                 # 使用try-finally确保资源正确释放
                 try:
                     traced_cuda.save(gpu_output_path)
                     print(f"✅ GPU版本模型已保存到: {gpu_output_path}")
+                    try:
+                        traced_cuda_b10.save(gpu_output_path_b10)
+                        print(f"✅ GPU版本模型(B=10)已保存到: {gpu_output_path_b10}")
+                    except Exception as e:
+                        print(f"❌ GPU版本模型(B=10)序列化失败: {e}")
                 finally:
                     # 强制删除CUDA资源
                     del traced_cuda
+                    del traced_cuda_b10
                     del example_input_cuda
+                    del example_input_cuda_b10
                     model.cpu()
                     torch.cuda.empty_cache()
                     
