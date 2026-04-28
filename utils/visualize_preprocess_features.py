@@ -11,6 +11,25 @@ import torch.nn as nn
 import torchaudio
 import torchaudio.compliance.kaldi as ta_kaldi
 
+# 常用命令（PowerShell，可直接复制粘贴）:
+# 1) 使用默认参数，处理 TestData 全目录
+# python utils/visualize_preprocess_features.py
+#
+# 2) 使用 3500-8000 Hz 频段，输出到 feature_visualizations_35_80
+# python utils/visualize_preprocess_features.py --input_dir "E:\Code\930_Codes\Audio_classify\audioset_tagging_cnn\TestData" --output_dir "E:\Code\930_Codes\Audio_classify\audioset_tagging_cnn\TestData\feature_visualizations_35_80" --sample_rate 16000 --num_mel_bins 64 --frame_length 25 --frame_shift 10 --low_freq 3500 --high_freq 8000
+#
+# 3) 仅处理公开无人机数据（默认参数）
+# python utils/visualize_preprocess_features.py --input_dir "E:\Code\930_Codes\Audio_classify\audioset_tagging_cnn\TestData\公开无人机数据" --output_dir "E:\Code\930_Codes\Audio_classify\audioset_tagging_cnn\TestData\feature_visualizations_public_default"
+#
+# 4) 仅处理公开无人机数据（3500-8000 Hz）
+# python utils/visualize_preprocess_features.py --input_dir "E:\Code\930_Codes\Audio_classify\audioset_tagging_cnn\TestData\公开无人机数据" --output_dir "E:\Code\930_Codes\Audio_classify\audioset_tagging_cnn\TestData\feature_visualizations_public_35_80" --sample_rate 16000 --num_mel_bins 64 --frame_length 25 --frame_shift 10 --low_freq 3500 --high_freq 8000
+#
+# 5) 仅处理自研电麦误告（默认参数）
+# python utils/visualize_preprocess_features.py --input_dir "E:\Code\930_Codes\Audio_classify\audioset_tagging_cnn\TestData\自研电麦误告" --output_dir "E:\Code\930_Codes\Audio_classify\audioset_tagging_cnn\TestData\feature_visualizations"
+#
+# 6) 仅处理自研电麦误告（3500-8000 Hz）
+# python utils/visualize_preprocess_features.py --input_dir "E:\Code\930_Codes\Audio_classify\audioset_tagging_cnn\TestData\自研电麦误告" --output_dir "E:\Code\930_Codes\Audio_classify\audioset_tagging_cnn\TestData\feature_visualizations_35_80" --sample_rate 16000 --num_mel_bins 64 --frame_length 25 --frame_shift 10 --low_freq 3500 --high_freq 8000
+
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PYTORCH_DIR = PROJECT_ROOT / "pytorch"
