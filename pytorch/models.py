@@ -12,6 +12,8 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
+import scipy.signal as scipy_signal
+from scipy.ndimage import gaussian_filter, median_filter
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 
 def init_layer(layer):
@@ -1615,7 +1617,7 @@ class MobileNetV2_Mod(nn.Module):
 
         super(MobileNetV2_Mod, self).__init__()
 
-        self.feature_extractor = CNNLSTMExtractor(hidden_size=256, out_channels=mel_bins)
+        self.feature_extractor = UAVTFRFeatureExtractor(out_channels=mel_bins, sample_rate=16000)
 
         # Spec augmenter
         self.spec_augmenter = SpecAugmentation(time_drop_width=64, time_stripes_num=2,
@@ -1718,6 +1720,83 @@ class MobileNetV2_Mod(nn.Module):
         output_dict = {'clipwise_output': clipwise_output, 'embedding': embedding}
 
         return output_dict
+
+
+class UAVTFRFeatureExtractor(nn.Module):
+    """Time-frequency feature extractor adapted from uav_tfr_algorithm.py."""
+
+    def __init__(
+        self,
+        out_channels=64,
+        sample_rate=16000,
+        f_band=(100.0, 600.0),
+        low_thr_db=-20.0,
+    ):
+        super().__init__()
+        self.out_channels = int(out_channels)
+        self.sample_rate = int(sample_rate)
+        self.f_band = (float(f_band[0]), float(f_band[1]))
+        self.low_thr_db = float(low_thr_db)
+        self.output_dim = self.out_channels
+
+    def _extract_single(self, waveform_1d: np.ndarray) -> torch.Tensor:
+        waveform = np.asarray(waveform_1d, dtype=np.float32).reshape(-1)
+
+        # Keep the same windowing strategy as the provided UAV TFR algorithm.
+        wlen = max(32, int(round(self.sample_rate / 10.0)))
+        ovlp = int(round(0.75 * wlen))
+        if waveform.size < wlen:
+            waveform = np.pad(waveform, (0, wlen - waveform.size), mode="constant")
+
+        f, _, spec = scipy_signal.spectrogram(
+            waveform,
+            fs=self.sample_rate,
+            window=scipy_signal.windows.hann(wlen, sym=False),
+            nperseg=wlen,
+            noverlap=ovlp,
+            nfft=wlen,
+            detrend=False,
+            mode="complex",
+            scaling="density",
+        )
+
+        band_mask = (f >= self.f_band[0]) & (f <= self.f_band[1])
+        if not np.any(band_mask):
+            feature = np.zeros((self.out_channels, 1), dtype=np.float32)
+            return torch.from_numpy(feature).unsqueeze(-1)
+
+        p_raw = 20.0 * np.log10(np.abs(spec[band_mask, :]) + 1.0e-8)
+        denoised = median_filter(p_raw, size=(3, 3), mode="reflect")
+        denoised = gaussian_filter(denoised, sigma=(0.1, 3.0), mode="reflect")
+        col_bias = np.median(denoised, axis=0)
+        p_den = denoised - col_bias + np.median(col_bias)
+        p_den = np.maximum(p_den, self.low_thr_db).astype(np.float32, copy=False)
+
+        # Keep feature informative when the threshold floor makes the map nearly constant.
+        if float(np.std(p_den)) < 1e-6:
+            p_den = p_raw.astype(np.float32, copy=False)
+
+        # Per-sample normalization, then resize frequency bins to match model channels.
+        p_den = (p_den - np.mean(p_den)) / (np.std(p_den) + 1e-6)
+        feat = torch.from_numpy(p_den).float().unsqueeze(0).unsqueeze(0)  # (1,1,F,T)
+        feat = F.interpolate(
+            feat,
+            size=(self.out_channels, feat.shape[-1]),
+            mode="bilinear",
+            align_corners=False,
+        )
+        feat = feat.squeeze(0).squeeze(0)  # (C,T)
+        return feat.unsqueeze(-1)  # (C,T,1)
+
+    def forward(self, source: torch.Tensor) -> torch.Tensor:
+        """Args: source (B, audio_samples). Returns: (B, C, T, 1)."""
+        outputs = []
+        for i in range(source.size(0)):
+            single_np = source[i].detach().cpu().numpy().astype(np.float32)
+            outputs.append(self._extract_single(single_np))
+
+        x = torch.stack(outputs, dim=0).to(source.device, dtype=source.dtype)
+        return x
 
 
 class LeeNetConvBlock(nn.Module):
@@ -2815,7 +2894,9 @@ class CNNLSTMExtractor(nn.Module):
                 num_mel_bins=64,
                 sample_frequency=16000,
                 frame_length=25,
-                frame_shift=10
+                frame_shift=10,
+                low_freq=0,
+                high_freq=2500
             )  # kaldi.fbank里面有个fft_rfft，是onnx不支持的算子，需要处理
             fbanks.append(fbank)
         fbank = torch.stack(fbanks, dim=0)  # shape: (1, T, 128)
